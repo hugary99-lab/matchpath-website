@@ -279,10 +279,14 @@ async function validateZip(file){
  if(file.size>45*1024*1024)throw Error('ZIP limit is 45 MB');
  const {default:JSZip}=await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
  const zip=await JSZip.loadAsync(file);
+ const entries=Object.values(zip.files);if(entries.length>90)throw Error('ZIP contains too many entries');
+ const uncompressed=entries.reduce((sum,item)=>sum+Number(item._data?.uncompressedSize||0),0);
+ if(uncompressed>120*1024*1024)throw Error('ZIP decompressed size exceeds 120 MB');
  const m=zip.file('manifest.csv');if(!m)throw Error('ZIP must have manifest.csv at its root');
+ if(Number(m._data?.uncompressedSize||0)>32768)throw Error('Manifest exceeds 32 KB');
  const {keys,rows}=parseCsv(await m.async('string'));
  if(!exactColumns(keys,MANIFEST))throw Error('Manifest columns do not match v1.0 format');
- if(!rows.length||rows.length>80)throw Error('ZIP must have 1–80 application packages');
+ if(!rows.length||rows.length>25)throw Error('ZIP must have 1–25 application packages');
  const items=[],seen=new Set(),id=currentCustomer();
  for(const row of rows){
   if(row.schema_version!=='1.0'||row.customer_id!==id)throw Error('Manifest customer ID or version mismatch');
