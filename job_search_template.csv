@@ -1,0 +1,2 @@
+schema_version,customer_id,search_run_id,searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
+1.0,CUST-DEMO,RUN-DEMO-001,2026-10-09T09:00:00-04:00,Implementation Manager,Example Company,"Toronto, ON",Hybrid,120000,140000,CAD,https://example.org/jobs/demo-001,Employer site,93,Qualified,Relevant implementation leadership,Example row only; not a real vacancy
