@@ -1,0 +1,12 @@
+{
+  "name": "matchpath-website",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Static MatchPath public prototype and Supabase-backed beta portal",
+  "scripts": {
+    "check": "node --check beta/app.js && node --check beta/config.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {"node": ">=20"}
+}
