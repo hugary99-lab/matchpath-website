@@ -1,0 +1,2 @@
+schema_version,customer_id,application_id,resume_file,cover_letter_file
+1.0,CUST-DEMO,APP-DEMO-001,APP-DEMO-001/resume.pdf,APP-DEMO-001/cover_letter.pdf
