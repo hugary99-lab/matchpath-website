@@ -112,7 +112,7 @@ function adminPage(){
  let html=head('Super admin','Accounts & staff assignments','Grant staff access only to designated customer accounts. The pilot can assign all ten customers to one staff member.');
  html+='<div class="grid"><div class="card stat"><div class="name">Customers</div><div class="value">'+customers.length+'</div></div><div class="card stat"><div class="name">Staff</div><div class="value">'+staff.length+'</div></div><div class="card stat"><div class="name">Assignments</div><div class="value">'+state.assignments.length+'</div></div></div>';
  html+='<section class="card section"><h2>Account roles</h2><div class="table-wrap"><table><thead><tr><th>Account</th><th>Current role</th><th>Change role</th></tr></thead><tbody>'+all.map(a=>'<tr><td><strong>'+esc(a.full_name||'Name not set')+'</strong><small>'+esc(a.email)+'</small></td><td>'+statusBadge(a.role)+'</td><td><div class="stack"><select id="role-'+esc(a.id)+'" class="form-control" style="max-width:145px" '+(a.id===state.account.id?'disabled':'')+'>'+['customer','staff','admin'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')+'</select><button class="btn small" data-action="set-role" data-user="'+esc(a.id)+'" '+(a.id===state.account.id?'disabled':'')+'>Save role</button></div></td></tr>').join('')+'</tbody></table></div></section>';
- html+='<section class="card section"><h2>Assign staff to customers</h2><div class="table-wrap"><table><thead><tr><th>Customer</th>'+staff.map(s=>'<th>'+esc(s.full_name||s.email)+'</th>').join('')+'</tr></thead><tbody>'+customers.map(c=>'<tr><td><strong>'+esc(c.full_name||c.email)+'</strong></td>'+staff.map(s=>'<td><label><input type="checkbox" data-action="assign" data-customer="'+esc(c.id)+'" data-staff="'+esc(s.id)+'" '+(state.assignments.some(x=>x.staff_id===s.id&&x.customer_id===c.id)?'checked':'')+'> Assigned</label></td>').join('')+'</tr>').join('')+'</tbody></table></div>'+(staff.length===0?'<p class="hint">Promote an account to staff before assigning customers.</p>':'')+'</section>';
+ html+='<section class="card section"><h2>Assign staff to customers</h2><div class="table-wrap"><table><thead><tr><th>Customer</th>'+staff.map(s=>'<th>'+esc(s.full_name||s.email)+'</th>').join('')+'</tr></thead><tbody>'+customers.map(c=>'<tr><td><strong>'+esc(c.full_name||c.email)+'</strong></td>'+staff.map(s=>'<td><label><input type="checkbox" data-change="assign" data-customer="'+esc(c.id)+'" data-staff="'+esc(s.id)+'" '+(state.assignments.some(x=>x.staff_id===s.id&&x.customer_id===c.id)?'checked':'')+'> Assigned</label></td>').join('')+'</tr>').join('')+'</tbody></table></div>'+(staff.length===0?'<p class="hint">Promote an account to staff before assigning customers.</p>':'')+'</section>';
  return html;
 }
 function render(){
@@ -323,7 +323,7 @@ document.addEventListener('change',async e=>{
   if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
-  if(e.target.dataset.action==='assign'){
+  if(e.target.dataset.change==='assign'){
    const b=e.target;const {error}=await state.sb.rpc('admin_assign_staff',{p_customer:b.dataset.customer,p_staff:b.dataset.staff,p_assign:b.checked});
    if(error)throw error;await loadData();notice('Staff assignment updated.');return;
   }
