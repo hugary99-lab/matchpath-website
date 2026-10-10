@@ -143,7 +143,7 @@ create or replace function public.can_access_document_path(p_name text, p_write 
 returns boolean language plpgsql stable security definer set search_path=public,pg_temp as $$
 declare v_customer uuid; v_application uuid;
 begin
-  if p_name !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-zA-Z0-9_-]+\\.pdf$' then
+  if p_name !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[a-zA-Z0-9_-]+[.]pdf$' then
     return false;
   end if;
   v_customer:=split_part(p_name,'/',1)::uuid;
@@ -249,7 +249,7 @@ begin
  insert into public.search_runs(customer_id,external_id,created_by) values(p_customer,p_run_id,auth.uid()) returning id into v_run;
  for v_record in select value from jsonb_array_elements(p_rows) loop
    v_total:=v_total+1;
-   if v_record->>'customer_id'<>p_customer::text or v_record->>'search_run_id'<>p_run_id or v_record->>'schema_version'<>'1.0' then
+   if (v_record->>'customer_id') is distinct from p_customer::text or (v_record->>'search_run_id') is distinct from p_run_id or (v_record->>'schema_version') is distinct from '1.0' then
       raise exception 'Row %: wrong schema, customer or run ID',v_total;
    end if;
    v_company:=trim(coalesce(v_record->>'company',''));
@@ -266,13 +266,13 @@ begin
    else raise exception 'Row %: invalid fit score',v_total; end if;
    if nullif(v_record->>'searched_at','') is null then v_timestamp:=now();
    else v_timestamp:=(v_record->>'searched_at')::timestamptz; end if;
-   v_key:=lower(regexp_replace(v_company,'\\s+',' ','g'))||'|'||lower(regexp_replace(split_part(split_part(v_url,'?',1),'#',1),'/$',''));
+   v_key:=lower(regexp_replace(v_company,'[[:space:]]+',' ','g'))||'|'||lower(regexp_replace(split_part(split_part(v_url,'?',1),'#',1),'/$',''));
    insert into public.jobs(customer_id,search_run_id,canonical_key,job_title,company,location,work_arrangement,
        salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns,searched_at)
    values(p_customer,v_run,v_key,v_title,v_company,left(coalesce(v_record->>'location',''),240),
        case when v_record->>'work_arrangement' in ('Remote','Hybrid','Onsite','Unknown') then v_record->>'work_arrangement' else 'Unknown' end,
-       case when coalesce(v_record->>'salary_min','') ~ '^[0-9]+(\\.[0-9]+)?$' then (v_record->>'salary_min')::numeric else null end,
-       case when coalesce(v_record->>'salary_max','') ~ '^[0-9]+(\\.[0-9]+)?$' then (v_record->>'salary_max')::numeric else null end,
+       case when coalesce(v_record->>'salary_min','') ~ '^[0-9]+([.][0-9]+)?$' then (v_record->>'salary_min')::numeric else null end,
+       case when coalesce(v_record->>'salary_max','') ~ '^[0-9]+([.][0-9]+)?$' then (v_record->>'salary_max')::numeric else null end,
        left(coalesce(v_record->>'currency',''),8),v_url,left(coalesce(v_record->>'source',''),120),
        v_score,v_qual,left(coalesce(v_record->>'fit_reason',''),3000),left(coalesce(v_record->>'concerns',''),3000),v_timestamp)
    on conflict(customer_id,canonical_key) do nothing;
