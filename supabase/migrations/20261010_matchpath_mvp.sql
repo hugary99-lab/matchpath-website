@@ -357,6 +357,16 @@ using(bucket_id='matchpath-profiles' and
  case when split_part(name,'/',1) ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
  then public.can_access_customer(split_part(name,'/',1)::uuid) else false end);
 
+-- Explicit baseline privileges. RLS still determines visible rows; RPCs own all other writes.
+grant usage on schema public to authenticated;
+grant select on public.accounts,public.customer_profiles,public.staff_assignments,
+  public.search_runs,public.jobs,public.applications,public.document_versions,
+  public.submitted_documents,public.application_events,public.audit_events to authenticated;
+grant update on public.customer_profiles to authenticated;
+revoke all on public.accounts,public.customer_profiles,public.staff_assignments,
+  public.search_runs,public.jobs,public.applications,public.document_versions,
+  public.submitted_documents,public.application_events,public.audit_events from anon;
+
 -- RPC execute privileges. All RPCs have their own server-side authorization.
 revoke execute on function public.on_new_auth_user() from public,anon,authenticated;
 revoke execute on function public.is_admin() from public,anon;
