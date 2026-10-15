@@ -206,6 +206,7 @@ async function handleClick(target){
 async function handleSubmit(form){
  const type=form.id;
  if(type==='authForm'){
+  if(!state.sb)throw Error('Authentication is still initializing. Please try again in a moment.');
   const email=$('#authEmail').value.trim(),password=$('#authPassword').value,name=$('#authName')?.value.trim()||'';
   let signedInUser=null;
   if(form.dataset.mode==='signup'){
@@ -359,6 +360,8 @@ $('#dialog').addEventListener('click',e=>{if(e.target.id==='dialog')closeDialog(
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog()});
 async function boot(){
  if(!config.supabaseUrl||!config.supabasePublishableKey){renderSetup();return;}
+ // Show usable login UI immediately; do not block first paint on network or session restoration.
+ renderAuth('login');
  const timeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' timed out. Check your network and retry.')),ms))]);
  try{
   let sdk;
@@ -366,8 +369,9 @@ async function boot(){
   catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
   const timedFetch=(url,options={})=>fetch(url,{...options,signal:options.signal||AbortSignal.timeout(10000)});
   state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:false},global:{fetch:timedFetch}});
-  await timeout(loadData(),40000,'MatchPath startup');
-  state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});
+  // Deliberately avoid getUser/getSession on startup: stale session refresh locks can block sign-in.
+  // Load account data only after explicit successful authentication.
+  state.sb.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){state.me=null;state.account=null;renderAuth()}});
  }catch(e){
   $('#sidebar').classList.add('hidden');$('#logoutBtn').classList.add('hidden');
   $('#page').innerHTML='<section class="card" style="max-width:660px"><h1>MatchPath could not finish loading</h1><p>The portal could not connect to its authentication service. Your account has not been changed.</p><p class="hint" id="bootError"></p><button class="btn" id="retryBoot" type="button">Retry loading</button></section>';
