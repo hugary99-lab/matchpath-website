@@ -2,7 +2,7 @@
  * MatchPath C001 Google Sheets importer — Google Apps Script.
  * Paste into Extensions > Apps Script in the private pilot spreadsheet.
  * Run importMatchPathCsv() from the editor, or install a menu with onOpen().
- * CSV is supplied in a dialog; never expose this script as a public web app.
+ * CSV is read from a private Google Drive CSV file ID; never expose as a public web app.
  */
 const MP_HEADERS = ['schema_version','customer_id','search_run_id','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const MP_JOB_HEADERS = ['job_key','search_run_id','discovered_at','employer','job_title','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','posting_verified_at','mandatory_status','fit_score','fit_evidence','concerns','status','approved_at','applied_at','application_confirmation','last_updated_at'];
@@ -12,9 +12,9 @@ function onOpen() {
 }
 function importMatchPathCsv() {
   const ui=SpreadsheetApp.getUi();
-  const prompt=ui.prompt('MatchPath CSV import','Paste the entire CSV (header included). This preserves all existing workflow statuses.',ui.ButtonSet.OK_CANCEL);
+  const prompt=ui.prompt('MatchPath CSV import','Enter the Google Drive file ID of the private UTF-8 CSV. This preserves all existing workflow statuses.',ui.ButtonSet.OK_CANCEL);
   if(prompt.getSelectedButton()!==ui.Button.OK)return;
-  try {const result=importMatchPathCsvText_(prompt.getResponseText());ui.alert(JSON.stringify(result,null,2));}
+  try {const csv=DriveApp.getFileById(prompt.getResponseText().trim()).getBlob().getDataAsString('UTF-8');const result=importMatchPathCsvText_(csv);ui.alert(JSON.stringify(result,null,2));}
   catch(e){ui.alert('Import rejected: '+e.message);throw e;}
 }
 function mpParseCsv_(input) {
