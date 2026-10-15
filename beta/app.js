@@ -339,11 +339,19 @@ $('#dialog').addEventListener('click',e=>{if(e.target.id==='dialog')closeDialog(
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog()});
 async function boot(){
  if(!config.supabaseUrl||!config.supabasePublishableKey){renderSetup();return;}
+ const timeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' timed out. Check your network and retry.')),ms))]);
  try{
-  const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.57.0');
-  state.sb=createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true}});
-  await loadData();
-  state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});  
- }catch(e){renderSetup();notice('Backend connection error: '+errorMsg(e),true)}
+  let sdk;
+  try { sdk=await timeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),12000,'Primary authentication library'); }
+  catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
+  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true}});
+  await timeout(loadData(),15000,'MatchPath startup');
+  state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});
+ }catch(e){
+  $('#sidebar').classList.add('hidden');$('#logoutBtn').classList.add('hidden');
+  $('#page').innerHTML='<section class="card" style="max-width:660px"><h1>MatchPath could not finish loading</h1><p>The portal could not connect to its authentication service. Your account has not been changed.</p><p class="hint" id="bootError"></p><button class="btn" id="retryBoot" type="button">Retry loading</button></section>';
+  $('#bootError').textContent=errorMsg(e);
+  $('#retryBoot').addEventListener('click',()=>window.location.reload());
+ }
 }
 boot();
