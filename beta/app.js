@@ -110,6 +110,7 @@ function adminPage(){
  if(state.account.role!=='admin')return '<section class="card">Not authorized.</section>';
  const all=state.accounts,staff=all.filter(a=>a.role==='staff'),customers=all.filter(a=>a.role==='customer');
  let html=head('Super admin','Accounts & staff assignments','Grant staff access only to designated customer accounts. The pilot can assign all ten customers to one staff member.');
+ html+='<section class="card section"><h2>Invite a customer or staff member</h2><p class="hint">Send a secure invitation. The recipient sets their own password; no password is shared with administrators.</p><form id="inviteAccountForm"><div class="grid">'+field('inviteName','Full name','','text','required maxlength="120"')+field('inviteEmail','Email address','','email','required autocomplete="off"')+'<div class="field"><label for="inviteRole">Account type</label><select id="inviteRole" class="form-control"><option value="customer">Customer</option><option value="staff">Staff</option></select></div></div><button class="btn" type="submit">Send invitation</button></form></section>';
  html+='<div class="grid"><div class="card stat"><div class="name">Customers</div><div class="value">'+customers.length+'</div></div><div class="card stat"><div class="name">Staff</div><div class="value">'+staff.length+'</div></div><div class="card stat"><div class="name">Assignments</div><div class="value">'+state.assignments.length+'</div></div></div>';
  html+='<section class="card section"><h2>Account roles</h2><div class="table-wrap"><table><thead><tr><th>Account</th><th>Current role</th><th>Change role</th></tr></thead><tbody>'+all.map(a=>'<tr><td><strong>'+esc(a.full_name||'Name not set')+'</strong><small>'+esc(a.email)+'</small></td><td>'+statusBadge(a.role)+'</td><td><div class="stack"><select id="role-'+esc(a.id)+'" class="form-control" style="max-width:145px" '+(a.id===state.account.id?'disabled':'')+'>'+['customer','staff','admin'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')+'</select><button class="btn small" data-action="set-role" data-user="'+esc(a.id)+'" '+(a.id===state.account.id?'disabled':'')+'>Save role</button></div></td></tr>').join('')+'</tbody></table></div></section>';
  html+='<section class="card section"><h2>Assign staff to customers</h2><div class="table-wrap"><table><thead><tr><th>Customer</th>'+staff.map(s=>'<th>'+esc(s.full_name||s.email)+'</th>').join('')+'</tr></thead><tbody>'+customers.map(c=>'<tr><td><strong>'+esc(c.full_name||c.email)+'</strong></td>'+staff.map(s=>'<td><label><input type="checkbox" data-change="assign" data-customer="'+esc(c.id)+'" data-staff="'+esc(s.id)+'" '+(state.assignments.some(x=>x.staff_id===s.id&&x.customer_id===c.id)?'checked':'')+'> Assigned</label></td>').join('')+'</tr>').join('')+'</tbody></table></div>'+(staff.length===0?'<p class="hint">Promote an account to staff before assigning customers.</p>':'')+'</section>';
@@ -213,6 +214,24 @@ async function handleClick(target){
 }
 async function handleSubmit(form){
  const type=form.id;
+ if(type==='inviteAccountForm'){
+  if(state.account?.role!=='admin')throw Error('Administrator access required.');
+  const response=await fetch(config.supabaseUrl+'/functions/v1/admin-invite-account',{method:'POST',headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},body:JSON.stringify({full_name:$('#inviteName').value.trim(),email:$('#inviteEmail').value.trim(),role:$('#inviteRole').value}),signal:AbortSignal.timeout(15000)});
+  const result=await response.json();
+  if(!response.ok||!result.ok)throw Error(result.error||'Invitation failed (HTTP '+response.status+')');
+  await loadData(state.me);
+  notice('Invitation sent to '+result.email+' as '+result.role+'.');
+  return;
+ }
+ if(type==='acceptInviteForm'){
+  if(!state.inviteToken)throw Error('Invitation session missing. Please reopen the email link.');
+  const password=$('#invitePassword').value;
+  const response=await fetch(config.supabaseUrl+'/auth/v1/user',{method:'PUT',headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.inviteToken,'Content-Type':'application/json'},body:JSON.stringify({password}),signal:AbortSignal.timeout(15000)});
+  if(!response.ok){const detail=await response.json().catch(()=>({}));throw Error(detail.msg||detail.message||detail.error_description||'Password setup failed (HTTP '+response.status+')');}
+  state.inviteToken=null;
+  window.history.replaceState(null,'',window.location.pathname+window.location.search);
+  renderAuth('login');notice('Account activated. Sign in with your new password.');return;
+ }
  if(type==='authForm'){
   if(!state.sb)throw Error('Authentication is still initializing. Please try again in a moment.');
   const email=$('#authEmail').value.trim(),password=$('#authPassword').value,name=$('#authName')?.value.trim()||'';
@@ -373,7 +392,13 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog()});
 async function boot(){
  if(!config.supabaseUrl||!config.supabasePublishableKey){renderSetup();return;}
  // Show usable login UI immediately; do not block first paint on network or session restoration.
- renderAuth('login');
+ const inviteParams=new URLSearchParams(window.location.hash.replace(/^#/,''));
+ const inviteToken=inviteParams.get('type')==='invite'?inviteParams.get('access_token'):null;
+ if(inviteToken){
+  $('#sidebar').classList.add('hidden');$('#logoutBtn').classList.add('hidden');
+  $('#page').innerHTML='<div class="auth"><section class="card"><div class="eyebrow">MatchPath invitation</div><h1>Set your password</h1><p>Choose a password to activate your account.</p><form id="acceptInviteForm">'+field('invitePassword','New password','','password','required minlength="8" autocomplete="new-password"')+'<button class="btn" type="submit">Activate account</button></form></section></div>';
+  state.inviteToken=inviteToken;
+ }else renderAuth('login');
  const timeout=(promise,ms,label)=>Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' timed out. Check your network and retry.')),ms))]);
  try{
   let sdk;
