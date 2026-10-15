@@ -140,8 +140,14 @@ async function loadData(knownUser=null){
   if(session.error||!session.data.session?.user){state.me=null;state.account=null;renderAuth();return false;}
   state.me=session.data.session.user;
  }
- const {data:account,error:e}=await within(sb.from('accounts').select('*').eq('id',state.me.id).single(),'Account lookup',12000);
- if(e)throw new Error('Account lookup: '+errorMsg(e));
+ const token=state.loginToken;
+ if(!token)throw Error('Missing login token. Please sign in again.');
+ const endpoint=config.supabaseUrl+'/rest/v1/accounts?select=*&id=eq.'+encodeURIComponent(state.me.id);
+ const response=await within(fetch(endpoint,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Account lookup HTTP',12000);
+ if(!response.ok)throw Error('Account lookup HTTP '+response.status+': '+(await response.text()).slice(0,250));
+ const records=await response.json();
+ const account=records[0];
+ if(!account)throw Error('No account record returned.');
  state.account=account;
  const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs'];
  const tables=await Promise.all(keys.map(async table=>{
@@ -220,6 +226,7 @@ async function handleSubmit(form){
    signedInUser=data.user;
   }
   if(!signedInUser)throw Error('Authentication returned no user. Please retry.');
+  state.loginToken=data.session?.access_token||null;
   state.page='overview';
   const loaded=await loadData(signedInUser);
   if(loaded)notice('Signed in securely.');
