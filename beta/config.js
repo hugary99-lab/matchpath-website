@@ -1,6 +1,5 @@
-// PUBLIC browser configuration. Only publishable keys are allowed here.
-// Leave blank until a dedicated MatchPath Supabase project has been provisioned.
+// Public browser configuration: publishable key only; never store secret/service-role keys here.
 export default {
-  supabaseUrl: "",
-  supabasePublishableKey: ""
+  supabaseUrl: "https://ufvokkyoyodmevzxnlwc.supabase.co",
+  supabasePublishableKey: "sb_publishable_WwTMftjnlpkoYhMUSv22xA_ju6GyMZL"
 };
