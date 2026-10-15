@@ -126,16 +126,18 @@ function render(){
  $('#page').innerHTML=pageMap[state.page]();
 }
 async function loadData(){
- const sb=state.sb,session=await sb.auth.getUser();
+ const sb=state.sb;
+ const within=(operation,label,ms=12000)=>Promise.race([Promise.resolve(operation),new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' did not respond within '+Math.round(ms/1000)+' seconds.')),ms))]);
+ const session=await within(sb.auth.getUser(),'Authentication session',12000);
  if(session.error||!session.data.user){state.me=null;state.account=null;renderAuth();return;}
  state.me=session.data.user;
- let {data:account,error:e}=await sb.from('accounts').select('*').eq('id',state.me.id).single();
- if(e)throw e;
+ const {data:account,error:e}=await within(sb.from('accounts').select('*').eq('id',state.me.id).single(),'Account lookup',12000);
+ if(e)throw new Error('Account lookup: '+errorMsg(e));
  state.account=account;
  const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs'];
  const tables=await Promise.all(keys.map(async table=>{
-   const {data,error}=await sb.from(table).select('*').limit(table==='jobs'?1000:500);
-   if(error)throw error;return data||[];
+   const {data,error}=await within(sb.from(table).select('*').limit(table==='jobs'?1000:500),'Loading '+table,12000);
+   if(error)throw new Error('Loading '+table+': '+errorMsg(error));return data||[];
  }));
  [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -345,7 +347,7 @@ async function boot(){
   try { sdk=await timeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),12000,'Primary authentication library'); }
   catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
   state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true}});
-  await timeout(loadData(),15000,'MatchPath startup');
+  await timeout(loadData(),40000,'MatchPath startup');
   state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});
  }catch(e){
   $('#sidebar').classList.add('hidden');$('#logoutBtn').classList.add('hidden');
