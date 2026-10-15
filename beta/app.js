@@ -215,18 +215,21 @@ async function handleSubmit(form){
   if(!state.sb)throw Error('Authentication is still initializing. Please try again in a moment.');
   const email=$('#authEmail').value.trim(),password=$('#authPassword').value,name=$('#authName')?.value.trim()||'';
   let signedInUser=null;
+  let signedInSession=null;
   if(form.dataset.mode==='signup'){
    const {data,error}=await state.sb.auth.signUp({email,password,options:{data:{full_name:name}}});
    if(error)throw error;
    if(!data.session){renderAuth('login');notice('Account created. Check your email to confirm your address before signing in.');return}
    signedInUser=data.user;
+   signedInSession=data.session;
   }else{
    const {data,error}=await state.sb.auth.signInWithPassword({email,password});
    if(error)throw error;
    signedInUser=data.user;
+   signedInSession=data.session;
   }
   if(!signedInUser)throw Error('Authentication returned no user. Please retry.');
-  state.loginToken=data.session?.access_token||null;
+  state.loginToken=signedInSession?.access_token||null;
   state.page='overview';
   const loaded=await loadData(signedInUser);
   if(loaded)notice('Signed in securely.');
