@@ -151,8 +151,10 @@ async function loadData(knownUser=null){
  state.account=account;
  const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs'];
  const tables=await Promise.all(keys.map(async table=>{
-   const {data,error}=await within(sb.from(table).select('*').limit(table==='jobs'?1000:500),'Loading '+table,12000);
-   if(error)throw new Error('Loading '+table+': '+errorMsg(error));return data||[];
+   const url=config.supabaseUrl+'/rest/v1/'+table+'?select=*&limit='+(table==='jobs'?1000:500);
+   const response=await within(fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Loading '+table,12000);
+   if(!response.ok)throw Error('Loading '+table+' HTTP '+response.status+': '+(await response.text()).slice(0,250));
+   return await response.json();
  }));
  [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
