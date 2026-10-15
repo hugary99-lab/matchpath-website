@@ -125,18 +125,21 @@ function render(){
  const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
  $('#page').innerHTML=pageMap[state.page]();
 }
-async function loadData(){
+async function loadData(knownUser=null){
  const sb=state.sb;
  const within=(operation,label,ms=12000)=>Promise.race([Promise.resolve(operation),new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' did not respond within '+Math.round(ms/1000)+' seconds.')),ms))]);
- let session;
- try { session=await within(sb.auth.getUser(),'Authentication session',10000); }
- catch(e) {
-  state.me=null;state.account=null;renderAuth();
-  notice('Your saved login could not be verified. Try signing in again. Details: '+errorMsg(e),true);
-  return;
+ if(knownUser){state.me=knownUser;}
+ else {
+  let session;
+  try { session=await within(sb.auth.getUser(),'Authentication session',10000); }
+  catch(e) {
+   state.me=null;state.account=null;renderAuth();
+   notice('Saved login unavailable. Sign in to continue. Details: '+errorMsg(e),true);
+   return false;
+  }
+  if(session.error||!session.data.user){state.me=null;state.account=null;renderAuth();return false;}
+  state.me=session.data.user;
  }
- if(session.error||!session.data.user){state.me=null;state.account=null;renderAuth();return;}
- state.me=session.data.user;
  const {data:account,error:e}=await within(sb.from('accounts').select('*').eq('id',state.me.id).single(),'Account lookup',12000);
  if(e)throw new Error('Account lookup: '+errorMsg(e));
  state.account=account;
@@ -153,6 +156,7 @@ async function loadData(){
  if(account.role==='customer')state.selectedCustomer=account.id;
  else if(!cs.some(x=>x.id===state.selectedCustomer))state.selectedCustomer=cs[0]?.id||null;
  render();
+ return true;
 }
 const refresh=async()=>{try{await loadData();}catch(e){notice(errorMsg(e),true)}};
 function errorMsg(e){return e?.message || String(e || 'Unknown error')}
@@ -203,14 +207,22 @@ async function handleSubmit(form){
  const type=form.id;
  if(type==='authForm'){
   const email=$('#authEmail').value.trim(),password=$('#authPassword').value,name=$('#authName')?.value.trim()||'';
+  let signedInUser=null;
   if(form.dataset.mode==='signup'){
    const {data,error}=await state.sb.auth.signUp({email,password,options:{data:{full_name:name}}});
    if(error)throw error;
    if(!data.session){renderAuth('login');notice('Account created. Check your email to confirm your address before signing in.');return}
+   signedInUser=data.user;
   }else{
-   const {error}=await state.sb.auth.signInWithPassword({email,password});if(error)throw error;
+   const {data,error}=await state.sb.auth.signInWithPassword({email,password});
+   if(error)throw error;
+   signedInUser=data.user;
   }
-  state.page='overview';await loadData();notice('Signed in securely.');return;
+  if(!signedInUser)throw Error('Authentication returned no user. Please retry.');
+  state.page='overview';
+  const loaded=await loadData(signedInUser);
+  if(loaded)notice('Signed in securely.');
+  return;
  }
  if(type==='profileForm'){
   const score=Number($('#min_fit_score').value);
