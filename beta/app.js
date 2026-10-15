@@ -131,14 +131,14 @@ async function loadData(knownUser=null){
  if(knownUser){state.me=knownUser;}
  else {
   let session;
-  try { session=await within(sb.auth.getUser(),'Authentication session',10000); }
+  try { session=await within(sb.auth.getSession(),'Authentication session',10000); }
   catch(e) {
    state.me=null;state.account=null;renderAuth();
    notice('Saved login unavailable. Sign in to continue. Details: '+errorMsg(e),true);
    return false;
   }
-  if(session.error||!session.data.user){state.me=null;state.account=null;renderAuth();return false;}
-  state.me=session.data.user;
+  if(session.error||!session.data.session?.user){state.me=null;state.account=null;renderAuth();return false;}
+  state.me=session.data.session.user;
  }
  const {data:account,error:e}=await within(sb.from('accounts').select('*').eq('id',state.me.id).single(),'Account lookup',12000);
  if(e)throw new Error('Account lookup: '+errorMsg(e));
@@ -365,7 +365,7 @@ async function boot(){
   try { sdk=await timeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),12000,'Primary authentication library'); }
   catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
   const timedFetch=(url,options={})=>fetch(url,{...options,signal:options.signal||AbortSignal.timeout(10000)});
-  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true},global:{fetch:timedFetch}});
+  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:false},global:{fetch:timedFetch}});
   await timeout(loadData(),40000,'MatchPath startup');
   state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});
  }catch(e){
