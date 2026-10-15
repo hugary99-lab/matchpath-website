@@ -128,7 +128,13 @@ function render(){
 async function loadData(){
  const sb=state.sb;
  const within=(operation,label,ms=12000)=>Promise.race([Promise.resolve(operation),new Promise((_,reject)=>setTimeout(()=>reject(new Error(label+' did not respond within '+Math.round(ms/1000)+' seconds.')),ms))]);
- const session=await within(sb.auth.getUser(),'Authentication session',12000);
+ let session;
+ try { session=await within(sb.auth.getUser(),'Authentication session',10000); }
+ catch(e) {
+  state.me=null;state.account=null;renderAuth();
+  notice('Your saved login could not be verified. Try signing in again. Details: '+errorMsg(e),true);
+  return;
+ }
  if(session.error||!session.data.user){state.me=null;state.account=null;renderAuth();return;}
  state.me=session.data.user;
  const {data:account,error:e}=await within(sb.from('accounts').select('*').eq('id',state.me.id).single(),'Account lookup',12000);
@@ -346,7 +352,8 @@ async function boot(){
   let sdk;
   try { sdk=await timeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),12000,'Primary authentication library'); }
   catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
-  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true}});
+  const timedFetch=(url,options={})=>fetch(url,{...options,signal:options.signal||AbortSignal.timeout(10000)});
+  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true},global:{fetch:timedFetch}});
   await timeout(loadData(),40000,'MatchPath startup');
   state.sb.auth.onAuthStateChange((_event,session)=>{if(!session){state.me=null;state.account=null;renderAuth()}});
  }catch(e){
