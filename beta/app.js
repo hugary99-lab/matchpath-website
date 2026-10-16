@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null};
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -33,23 +33,28 @@ function renderAuth(mode='login'){
  const signup=mode==='signup';
  $('#page').innerHTML='<div class="auth"><section class="card"><div class="eyebrow">Member access</div><h1>'+(signup?'Create your account':'Welcome back')+'</h1><p>'+(signup?'Start your confidential career-search profile. No charges are collected in this beta.':'Sign in to your personal MatchPath workspace.')+'</p><form id="authForm" data-mode="'+mode+'">'+(signup?field('authName','Your name','','text','autocomplete="name" required'):'')+field('authEmail','Email address','','email','autocomplete="email" required')+field('authPassword','Password','','password','autocomplete="'+(signup?'new-password':'current-password')+'" minlength="8" required')+'<button class="btn" type="submit">'+(signup?'Create account':'Sign in')+'</button></form><div class="auth-switch">'+(signup?'Already registered? <button class="btn ghost small" data-action="show-login">Sign in</button>':'New customer? <button class="btn ghost small" data-action="show-signup">Create account</button>')+'</div><hr><p class="hint">Staff and admin access is assigned by an administrator. Creating an account does not grant staff permissions.</p></section></div>';
 }
-function navItems(){const r=state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads'],['admin','Accounts & access']];}
+function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads'],['admin','Accounts & access']];}
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
  const r=state.account.role;
- $('#modeLabel').textContent=(r==='admin'?'Admin':r==='staff'?'Staff':'Customer')+' workspace';
- $('#signedInAs').innerHTML='<strong>'+esc(state.account.full_name||state.me.email)+'</strong><span>'+esc(state.me.email)+'</span><span>'+esc(r.toUpperCase())+'</span>';
+ const preview=r==='admin'&&state.workspaceView==='staff';
+ $('#modeLabel').innerHTML=r==='admin'?'<label for="workspaceSwitch">Workspace </label><select id="workspaceSwitch"><option value="admin" '+(!preview?'selected':'')+'>Admin workspace</option><option value="staff" '+(preview?'selected':'')+'>Staff workspace preview</option></select>':(r==='staff'?'Staff':'Customer')+' workspace';
+ $('#signedInAs').innerHTML='<strong>'+esc(state.account.full_name||state.me.email)+'</strong><span>'+esc(state.me.email)+'</span><span>'+esc(r.toUpperCase())+(preview?' · STAFF PREVIEW':'')+'</span>';
  $('#mainNav').innerHTML=navItems().map(([id,n])=>'<button type="button" class="nav-button '+(state.page===id?'active':'')+'" data-action="navigate" data-page="'+id+'">'+esc(n)+'</button>').join('');
 }
 function customerPicker(){
  if(state.account.role==='customer')return '';
- const customers=state.accounts.filter(x=>x.role==='customer');
- return '<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
+ const preview=state.account.role==='admin'&&state.workspaceView==='staff';
+ const staff=state.accounts.filter(x=>x.role==='staff');
+ const customers=state.accounts.filter(x=>x.role==='customer'&&(!preview||!state.previewStaffId||state.assignments.some(a=>a.staff_id===state.previewStaffId&&a.customer_id===x.id)));
+ if(preview&&!customers.some(c=>c.id===state.selectedCustomer))state.selectedCustomer=customers[0]?.id||null;
+ const selector=preview?'<div class="field" style="min-width:220px;margin:0"><label for="previewStaffSelect">Preview staff member</label><select id="previewStaffSelect"><option value="">All customers (generic preview)</option>'+staff.map(x=>'<option value="'+esc(x.id)+'" '+(state.previewStaffId===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>':'';
+ return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
 function filteredQualifiedJobs(){const id=currentCustomer(),p=currentProfile();return matchingJobs(id).filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=(p?.min_fit_score??90))}
 function dashboard(){
- const role=state.account.role, id=currentCustomer();
+ const role=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role, id=currentCustomer();
  const j=matchingJobs(id),a=matchingApps(id);
  const ready=a.filter(x=>x.status==='ready').length,submitted=a.filter(x=>x.status==='submitted').length;
  const matches=filteredQualifiedJobs();
@@ -119,7 +124,7 @@ function adminPage(){
 function render(){
  if(!state.account)return renderAuth();
  buildNav();
- const r=state.account.role;
+ const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'&&!['overview','matches','applications','profile'].includes(state.page))state.page='overview';
  if(r!=='customer'&&!['overview','import','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
@@ -376,6 +381,12 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.id==='workspaceSwitch'&&state.account?.role==='admin'){
+   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;render();return;
+  }
+  if(e.target.id==='previewStaffSelect'&&state.account?.role==='admin'){
+   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;render();return;
+  }
   if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
