@@ -99,6 +99,8 @@ function workbenchPage(){
  let html=head('Step 2 · Staff operations','Approved applications','Work directly from each approved job. Upload the right documents, open the original posting, submit manually, then record the confirmation.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  if(!a.length)return html+'<div class="card empty"><strong>No approved jobs yet</strong>Wait for customer review before preparing documents.</div>';
+ const count=a.reduce((n,app)=>n+['resume','cover_letter'].filter(kind=>!!appliedDocFor(app.id,kind)).length,0);
+ html+='<section class="card section"><div class="space"><div><strong>Batch download for this customer</strong><p class="hint">Latest resume and cover letter PDFs for each approved application, packaged by job in a ZIP. Missing documents are listed in the manifest.</p></div><button class="btn outline" data-action="download-all-documents" '+(!count?'disabled':'')+'>Download all resumes &amp; cover letters ('+count+')</button></div></section>';
  html+='<div class="flex-col">'+a.map(app=>{let j=byId(state.jobs,app.job_id),res=docFor(app.id,'resume'),letter=docFor(app.id,'cover_letter'),can=canPrepare(app);
  return '<article class="card"><div class="space"><div><span class="pill">'+esc(app.application_code)+'</span><h3 style="margin:9px 0 3px">'+esc(j?.job_title||'Unknown job')+'</h3><p class="muted">'+esc(j?.company||'')+' · '+esc(j?.location||'')+'</p></div>'+statusBadge(app.status)+'</div><p>'+esc(j?.fit_reason||'')+'</p><div class="detail"><div class="space"><span>Resume</span>'+(res?'<span class="badge">v'+res.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div><div class="space" style="margin-top:8px"><span>Cover letter</span>'+(letter?'<span class="badge">v'+letter.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div></div><div class="stack">'+docButtons(app)+'<a href="'+esc(safeUrl(j?.job_url))+'" class="btn outline small" target="_blank" rel="noopener noreferrer">Open employer posting ↗</a></div><div class="stack section">'+(app.status==='submitted'?'<span class="badge">Submitted '+fmtDate(app.submitted_at)+'</span><span class="hint">'+esc(app.submission_reference||'')+'</span>': '<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Manage files</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="ready" data-app="'+esc(app.id)+'">Mark ready</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="in_progress" data-app="'+esc(app.id)+'">In progress</button><button class="btn" '+(!can||!['ready','in_progress'].includes(app.status)?'disabled':'')+' data-action="submit" data-app="'+esc(app.id)+'">Mark submitted</button><button class="btn ghost small" data-action="status" data-status="blocked" data-app="'+esc(app.id)+'">Blocked</button>')+'</div></article>'}).join('')+'</div>';
  return html;
@@ -177,6 +179,35 @@ function errorMsg(e){return e?.message || String(e || 'Unknown error')}
 function openDialog(title,body){$('#dialogTitle').textContent=title;$('#dialogBody').innerHTML=body;$('#dialog').classList.remove('hidden')}
 function closeDialog(){$('#dialog').classList.add('hidden');$('#dialogBody').replaceChildren()}
 async function signedPdf(path,bucket){const {data,error}=await state.sb.storage.from(bucket).createSignedUrl(path,120);if(error)throw error;window.open(data.signedUrl,'_blank','noopener,noreferrer')}
+async function downloadAllCustomerDocuments(){
+ const customerId=currentCustomer();if(!customerId)throw Error('Select a customer first.');
+ const applications=matchingApps(customerId).filter(a=>a.status!=='closed');
+ const {default:JSZip}=await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+ const zip=new JSZip();const rows=['application_code,job_title,company,document_type,status'];
+ let downloaded=0;const missing=[];
+ for(const app of applications){
+  const job=byId(state.jobs,app.job_id)||{};
+  const folder=String(app.application_code||app.id).replace(/[^a-zA-Z0-9_-]/g,'_');
+  for(const kind of ['resume','cover_letter']){
+   const doc=appliedDocFor(app.id,kind);
+   if(!doc){missing.push(folder+'/'+kind);rows.push([app.application_code,job.job_title,job.company,kind,'missing'].map(csvCell).join(','));continue;}
+   const url=config.supabaseUrl+'/storage/v1/object/authenticated/matchpath-documents/'+doc.storage_path.split('/').map(encodeURIComponent).join('/');
+   const response=await fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},signal:AbortSignal.timeout(30000)});
+   if(!response.ok)throw Error('Could not download '+folder+'/'+kind+' (HTTP '+response.status+'). No partial ZIP was saved.');
+   const pdf=await response.blob();
+   if(pdf.size<4||pdf.size>20*1024*1024||!(await pdf.slice(0,4).text()).startsWith('%PDF'))throw Error('Invalid PDF for '+folder+'/'+kind);
+   zip.file(folder+'/'+kind+'_v'+doc.version+'.pdf',pdf);downloaded++;
+   rows.push([app.application_code,job.job_title,job.company,kind,'included'].map(csvCell).join(','));
+  }
+ }
+ if(!downloaded)throw Error('No PDF documents are available for this customer.');
+ zip.file('manifest.csv',rows.join('\\r\\n'));
+ const archive=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:4}});
+ const link=document.createElement('a'),objectUrl=URL.createObjectURL(archive);
+ link.href=objectUrl;link.download='MatchPath_'+customerId.slice(0,8)+'_approved_documents.zip';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
+ notice('ZIP prepared: '+downloaded+' PDFs from '+applications.length+' approved applications.'+(missing.length?' '+missing.length+' missing documents are listed in manifest.csv.':''));
+}
+const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
  if(action==='show-login'){renderAuth('login');return}
@@ -200,6 +231,7 @@ async function handleClick(target){
   const a=byId(state.apps,target.dataset.app);if(!a)throw Error('Application not found');
   openDialog('Confirm actual job application','<p class="warning">Only mark as submitted after completing the employer application. Record a confirmation/reference or verifiable submission acknowledgment.</p><form id="submitForm" data-app="'+esc(a.id)+'">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm submitted</button></form>');return;
  }
+ if(action==='download-all-documents'){await downloadAllCustomerDocuments();return;}
  if(action==='download'){
   const d=state.docs.find(x=>x.id===target.dataset.doc);if(!d)throw Error('File record missing');
   await signedPdf(d.storage_path,'matchpath-documents');return;
