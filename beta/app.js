@@ -91,7 +91,7 @@ function profilePage(){
  const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
  return head('Customer onboarding','Build your career search','Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.')+
  '<section class="card"><form id="profileForm"><h2>1 · Your background</h2><p class="hint">Do not enter passwords or private LinkedIn access tokens. We will not scrape a private LinkedIn account.</p>'+
- field('linkedin_url','LinkedIn public profile URL',linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
+ field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
  '<div class="field"><label for="referenceFiles">Upload reference resumes (PDF, multiple files)</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately; no automatic AI processing is triggered by saving.</span></div>'+
  '<h2>2 · Your next career move</h2><p class="hint">Select every goal that matters. Describe the most important tradeoffs below.</p>'+
  '<div class="field">'+objectiveOptions.map((o,i)=>'<label style="display:block;margin:9px 0"><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
@@ -99,7 +99,7 @@ function profilePage(){
  area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent or transferable roles',p.transferable_roles)+
  '<h2>3 · Search preferences and constraints</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+
  '<div class="form-row">'+field('salary_min','Minimum acceptable compensation',p.salary_min||'','number','min="0"')+'<div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+
- field('salary_target','Aspirational compensation target','','number','min="0" placeholder="Optional; describe in priorities if needed"')+
+ field('salary_target','Aspirational compensation target',p.salary_target||'','number','min="0" placeholder="Optional; describe in priorities if needed"')+
  '<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label for="service_tier">Service preference</label><select id="service_tier"><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — I apply</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+area('pension_preferences','Benefits and pension preferences',p.pension_preferences)+
  area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
@@ -232,7 +232,7 @@ async function downloadAllCustomerDocuments(){
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
- if(action==='show-login'){renderAuth('login');return}
+ if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===state.me.id);if(!item)throw Error('Resume unavailable');await signedPdf(item.storage_path,'matchpath-profiles');return}\n if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
  if(action==='navigate'){state.page=target.dataset.page;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
  if(action==='decision'){
