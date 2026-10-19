@@ -84,7 +84,29 @@ function applicationsPage(){
 function docButtons(app){return ['resume','cover_letter'].map(k=>{let d=appliedDocFor(app.id,k);return d?'<button class="btn outline small" data-action="download" data-doc="'+esc(d.id)+'">'+(k==='resume'?'Resume':'Cover letter')+' v'+d.version+' ↓</button>':'<span class="badge warn">'+(k==='resume'?'Resume':'Cover letter')+' pending</span>'}).join('')}
 function profilePage(){
  const p=currentProfile()||{};
- return head('Customer portal','My search profile','These preferences guide the job search and determine what qualifies for your review.')+'<section class="card"><form id="profileForm">'+area('target_roles','Target job titles or career tracks',p.target_roles,'Include direct matches and approved transferable roles.')+area('career_goals','Career goals and priorities',p.career_goals)+area('preferred_locations','Locations and relocation preferences',p.preferred_locations)+'<div class="form-row">'+field('salary_min','Minimum salary (CAD)',p.salary_min||'','number','min="0"')+'<div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+area('exclusions','Hard exclusions (employers, requirements)',p.exclusions)+area('search_instructions','Additional search instructions',p.search_instructions)+'<div class="form-row"><div class="field"><label for="service_tier">Service plan</label><select id="service_tier"><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — I apply</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — staff assistance</option></select></div><div class="field"><label for="salary_currency">Salary currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+area('transferable_roles','Related or transferable job titles',p.transferable_roles)+area('employment_types','Employment type (permanent, contract, etc.)',p.employment_types)+area('industries','Preferred industries',p.industries)+area('relocation_preferences','Relocation preferences',p.relocation_preferences)+area('pension_preferences','Pension preferences',p.pension_preferences)+'<p class="hint">State mandatory vs preferred requirements explicitly in your search instructions. AI processing requires separate consent before any resume is sent to an AI provider.</p>'+'<div class="form-row">'+field('min_fit_score','Minimum match score (0–100)',p.min_fit_score??90,'number','min="0" max="100" required')+'<div class="field"><label>Baseline resume (PDF)</label><input id="baselineFile" type="file" accept=".pdf,application/pdf"><span class="hint">Stored privately in Supabase, not GitHub.</span></div></div><div class="stack"><button class="btn" type="submit">Save search profile</button>'+(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download baseline resume</button>':'')+'</div></form></section>';
+ const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
+ const objectives=String(p.career_goals||'').split('\n').filter(x=>x.startsWith('• ')).map(x=>x.slice(2));
+ const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
+ const cleanInstructions=String(p.search_instructions||'').replace(/^LinkedIn profile: https:\/\/[^\s]+\n?/m,'');
+ const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
+ return head('Customer onboarding','Build your career search','Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.')+
+ '<section class="card"><form id="profileForm"><h2>1 · Your background</h2><p class="hint">Do not enter passwords or private LinkedIn access tokens. We will not scrape a private LinkedIn account.</p>'+
+ field('linkedin_url','LinkedIn public profile URL',linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
+ '<div class="field"><label for="referenceFiles">Upload reference resumes (PDF, multiple files)</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately; no automatic AI processing is triggered by saving.</span></div>'+
+ '<h2>2 · Your next career move</h2><p class="hint">Select every goal that matters. Describe the most important tradeoffs below.</p>'+
+ '<div class="field">'+objectiveOptions.map((o,i)=>'<label style="display:block;margin:9px 0"><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
+ area('career_goals_detail','Career destination, priorities and timeline',goalsFree,'Example: move from consulting into a permanent public-sector IT manager role within six months; pension matters more than a 10% salary increase.')+
+ area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent or transferable roles',p.transferable_roles)+
+ '<h2>3 · Search preferences and constraints</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+
+ '<div class="form-row">'+field('salary_min','Minimum acceptable compensation',p.salary_min||'','number','min="0"')+'<div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+
+ field('salary_target','Aspirational compensation target','','number','min="0" placeholder="Optional; describe in priorities if needed"')+
+ '<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label for="service_tier">Service preference</label><select id="service_tier"><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — I apply</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
+ area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+area('pension_preferences','Benefits and pension preferences',p.pension_preferences)+
+ area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
+ area('search_instructions','Flexible preferences and additional search instructions',cleanInstructions,'List nice-to-have preferences separately from hard exclusions.')+
+ '<div class="form-row">'+field('min_fit_score','Minimum fit score (0–100)',p.min_fit_score??90,'number','min="0" max="100" required')+'</div>'+
+ '<p class="hint">Saving does not approve an AI-generated strategy or authorize application submissions. AI processing requires separate explicit consent.</p>'+
+ '<div class="stack"><button class="btn" type="submit">Save onboarding information</button>'+(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download previous baseline resume</button>':'')+'</div></form></section>';
 }
 function importPage(){
  const id=currentCustomer();let html=head('Step 1 · Staff operations','Import a job-search batch','Download the standard CSV from ChatGPT, choose its customer, validate the file, and import once. The backend prevents duplicate job records.',customerPicker());
@@ -296,13 +318,27 @@ async function handleSubmit(form){
  if(type==='profileForm'){
   const score=Number($('#min_fit_score').value);
   if(!Number.isInteger(score)||score<0||score>100)throw Error('Fit score must be between 0 and 100');
-  const values={target_roles:$('#target_roles').value,career_goals:$('#career_goals').value,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:$('#search_instructions').value,service_tier:$('#service_tier').value,salary_currency:$('#salary_currency').value,transferable_roles:$('#transferable_roles').value,employment_types:$('#employment_types').value,industries:$('#industries').value,relocation_preferences:$('#relocation_preferences').value,pension_preferences:$('#pension_preferences').value,min_fit_score:score,updated_at:new Date().toISOString()};
+  const linked=$('#linkedin_url').value.trim();
+  if(linked&&!/^https:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_%.-]+\/?(?:\?.*)?$/.test(linked))throw Error('Enter a valid public LinkedIn profile URL (linkedin.com/in/...).');
+  const selected=[...document.querySelectorAll('input[name="career_objective"]:checked')].map(x=>'• '+x.value);
+  const goals=[...selected,$('#career_goals_detail').value.trim()].filter(Boolean).join('\n');
+  const target=$('#salary_target').value.trim();
+  const extra=[linked?'LinkedIn profile: '+linked:'',target?'Aspirational compensation target ('+$('#salary_currency').value+'): '+target:'',$('#search_instructions').value.trim()].filter(Boolean).join('\n');
+  // Save using existing deployed profile columns; expanded intake columns are added only after migration.
+  const values={target_roles:$('#target_roles').value,career_goals:goals,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:extra,min_fit_score:score,updated_at:new Date().toISOString()};
   const {error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id);
   if(error)throw error;
-  const file=$('#baselineFile').files?.[0];
-  if(file){await validatePdf(file);const path=state.me.id+'/baseline_resume.pdf';const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:true});if(e)throw e;
-   const {error:ee}=await state.sb.from('customer_profiles').update({baseline_resume_path:path}).eq('customer_id',state.me.id);if(ee)throw ee;}
-  await loadData();notice('Search profile saved.');return;
+  const files=[...($('#referenceFiles').files||[])];
+  if(files.length>10)throw Error('Upload up to 10 reference resumes at a time.');
+  let uploaded=0;
+  for(const file of files){
+   await validatePdf(file);
+   const path=state.me.id+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
+   const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
+   if(e)throw Error('Saved preferences, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
+   uploaded++;
+  }
+  await loadData();notice('Onboarding saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'')+' AI career profiling has not started.');return;
  }
  if(type==='singleDocumentForm'){
   const app=$('#singleApp').value,kind=$('#singleKind').value,file=$('#singlePdf').files?.[0];
