@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null};
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -179,14 +179,14 @@ async function loadData(knownUser=null){
  const account=records[0];
  if(!account)throw Error('No account record returned.');
  state.account=account;
- const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs'];
+ const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes'];
  const tables=await Promise.all(keys.map(async table=>{
    const url=config.supabaseUrl+'/rest/v1/'+table+'?select=*&limit='+(table==='jobs'?1000:500);
    const response=await within(fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Loading '+table,12000);
    if(!response.ok)throw Error('Loading '+table+' HTTP '+response.status+': '+(await response.text()).slice(0,250));
    return await response.json();
  }));
- [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs]=tables;
+ [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.apps.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.runs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
