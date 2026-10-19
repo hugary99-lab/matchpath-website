@@ -28,5 +28,21 @@
 <div id="dialog" class="overlay hidden" role="dialog" aria-modal="true" aria-label="MatchPath dialog"><div class="modal">
   <div class="modal-top"><h2 id="dialogTitle">Review</h2><button id="dialogClose" class="icon-btn" aria-label="Close dialog">×</button></div><div id="dialogBody"></div>
 </div></div>
+<script>
+(function () {
+  var startupTimer = setTimeout(function () {
+    var page = document.getElementById('page');
+    if (!page || !page.textContent.includes('Loading MatchPath')) return;
+    page.innerHTML = '<section class="card" style="max-width:660px"><h1>MatchPath could not start</h1><p>The portal did not load its application code. Please refresh once or open this page in Safari. If the issue continues, contact support.</p><button class="btn" type="button" onclick="location.reload()">Retry loading</button></section>';
+  }, 10000);
+  window.addEventListener('error', function (event) {
+    if (!event || !event.message) return;
+    var page = document.getElementById('page');
+    if (!page || !page.textContent.includes('Loading MatchPath')) return;
+    clearTimeout(startupTimer);
+    page.innerHTML = '<section class="card" style="max-width:660px"><h1>MatchPath failed to load</h1><p>There was an error starting the portal. Refresh this page or open it in Safari.</p><button class="btn" type="button" onclick="location.reload()">Retry loading</button></section>';
+  });
+}());
+</script>
 <script type="module" src="./app.js"></script>
 </body></html>
