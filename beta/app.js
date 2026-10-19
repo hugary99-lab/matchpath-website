@@ -336,7 +336,7 @@ async function handleSubmit(form){
    const path=state.me.id+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
    const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
    if(e)throw Error('Saved preferences, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
-   uploaded++;
+   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:state.me.id,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});\n   if(metadataError)throw Error('File stored, but library registration failed: '+errorMsg(metadataError));\n   uploaded++;
   }
   await loadData();notice('Onboarding saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'')+' AI career profiling has not started.');return;
  }
