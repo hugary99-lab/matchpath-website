@@ -325,8 +325,8 @@ async function handleSubmit(form){
   const target=$('#salary_target').value.trim();
   const extra=[linked?'LinkedIn profile: '+linked:'',target?'Aspirational compensation target ('+$('#salary_currency').value+'): '+target:'',$('#search_instructions').value.trim()].filter(Boolean).join('\n');
   // Save using existing deployed profile columns; expanded intake columns are added only after migration.
-  const values={target_roles:$('#target_roles').value,career_goals:goals,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:extra,min_fit_score:score,updated_at:new Date().toISOString()};
-  const {error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id);
+  const values={target_roles:$('#target_roles').value,career_goals:goals,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:$('#search_instructions').value,linkedin_url:linked,salary_target:target||null,service_tier:$('#service_tier').value,salary_currency:$('#salary_currency').value,transferable_roles:$('#transferable_roles').value,employment_types:$('#employment_types').value,industries:$('#industries').value,relocation_preferences:$('#relocation_preferences').value,pension_preferences:$('#pension_preferences').value,min_fit_score:score,updated_at:new Date().toISOString()};
+  const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
   if(error)throw error;
   const files=[...($('#referenceFiles').files||[])];
   if(files.length>10)throw Error('Upload up to 10 reference resumes at a time.');
