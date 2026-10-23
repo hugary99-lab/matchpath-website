@@ -232,7 +232,8 @@ async function downloadAllCustomerDocuments(){
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
- if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===state.me.id);if(!item)throw Error('Resume unavailable');await signedPdf(item.storage_path,'matchpath-profiles');return}\n if(action==='show-login'){renderAuth('login');return}
+ if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===state.me.id);if(!item)throw Error('Resume unavailable');await signedPdf(item.storage_path,'matchpath-profiles');return}
+ if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
  if(action==='navigate'){state.page=target.dataset.page;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
  if(action==='decision'){
@@ -336,7 +337,9 @@ async function handleSubmit(form){
    const path=state.me.id+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
    const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
    if(e)throw Error('Saved preferences, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
-   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:state.me.id,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});\n   if(metadataError)throw Error('File stored, but library registration failed: '+errorMsg(metadataError));\n   uploaded++;
+   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:state.me.id,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});
+   if(metadataError)throw Error('File stored, but library registration failed: '+errorMsg(metadataError));
+   uploaded++;
   }
   await loadData();notice('Onboarding saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'')+' AI career profiling has not started.');return;
  }
