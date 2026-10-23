@@ -1,6 +1,6 @@
 # MatchPath — Website and Operational Beta
 
-**Status:** Production implementation in progress. The current public root `index.html` is an interactive *demo* with fictional data; the separate `/beta/` application is built to work with a dedicated Supabase project once connected. **Do not use real customers before the security/privacy tests have passed.**
+**Status:** Production implementation in progress. The public root `index.html` is an interactive *demo* with fictional data. The separate `/beta/` application is connected to a dedicated MatchPath Supabase project. On 2026-10-23, three JavaScript syntax defects that prevented startup were corrected in source and a regression test was added. **A live deployment, synthetic login/upload flow, cross-customer RLS checks and privacy review have NOT yet passed. Do not use real customers.**
 
 ## Repository structure
 
@@ -10,7 +10,7 @@
 | `beta/index.html` | Authenticated customer, staff and admin portal |
 | `beta/app.js` | Portal logic: login, profiles, approval, CSV import, documents, submissions, admin |
 | `beta/styles.css` | Responsive portal styles |
-| `beta/config.js` | Public Supabase URL and **publishable** key only; blank until provisioned |
+| `beta/config.js` | Configured public Supabase URL and **publishable** key only; never secret keys |
 | `supabase/migrations/20261010_matchpath_mvp.sql` | RLS-protected Postgres, RPCs and private file-storage policies |
 | `job_search_template.csv` | Actual 17-column v1.0 search export format |
 | `manifest_template.csv` | Actual 5-column v1.0 document manifest format |
