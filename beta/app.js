@@ -118,17 +118,17 @@ function importPage(){
 }
 function searchResultsPage(){
  const id=currentCustomer(),rows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)),p=currentProfile(),threshold=p?.min_fit_score??90;
- let html=head('Staff operations','Search results','Inspect every imported posting for the selected customer. Customer approval remains customer-only; staff/admin cannot silently approve on the customer’s behalf.',customerPicker());
+ let html=head('Staff operations','Search results','Inspect every imported posting for the selected customer. Customers can approve their own matches; Admin can also authorize an application directly. Staff cannot override approval.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  if(!rows.length)return html+'<section class="card empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
  const qualified=rows.filter(j=>j.qualification_status==='Qualified').length;
  const verify=rows.filter(j=>j.qualification_status==='Needs Verification').length;
  const pendingReview=rows.filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold&&j.review_status==='pending').length;
  html+='<div class="grid"><div class="card stat"><div class="name">Imported jobs</div><div class="value">'+rows.length+'</div></div><div class="card stat"><div class="name">Qualified</div><div class="value">'+qualified+'</div></div><div class="card stat"><div class="name">Needs verification</div><div class="value">'+verify+'</div></div><div class="card stat"><div class="name">Awaiting customer decision</div><div class="value">'+pendingReview+'</div></div></div>';
- html+='<div class="warning section">Approval is intentionally restricted to the customer login. Qualified jobs at or above the customer fit threshold appear in the customer <strong>Review job matches</strong> page. <strong>Needs Verification</strong> jobs are held until the uncertainty is resolved.</div>';
+ html+='<div class="warning section">Customers can approve their own qualified matches. Admin may use <strong>Start application</strong> to authorize work without separate customer approval; that action is audit logged. Staff cannot override authorization. <strong>Needs Verification</strong> jobs remain visible here so Admin can review them before deciding whether to proceed.</div>';
  html+='<div class="flex-col section">'+rows.map(j=>{
    const eligible=j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold;
-   const workflow=j.review_status==='approved'?'Customer approved':j.review_status==='rejected'?'Customer rejected':eligible?'Awaiting customer approval':j.qualification_status==='Needs Verification'?'Held for verification':j.qualification_status==='Not Qualified'?'Not qualified':'Below customer fit threshold';
+   const workflow=j.review_status==='approved'?'Authorized for application':j.review_status==='rejected'?'Rejected':eligible?'Awaiting customer/Admin authorization':j.qualification_status==='Needs Verification'?'Held for verification':j.qualification_status==='Not Qualified'?'Not qualified':'Below customer fit threshold';
    const cls=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
    const app=state.apps.find(a=>a.job_id===j.id);
    const adminCanStart=state.account.role==='admin'&&!app;
