@@ -9,12 +9,16 @@ const money = (v,c='CAD') => v==null||v==='' ? 'Not listed' : new Intl.NumberFor
 const safeUrl=(u)=>{try { const x = new URL(String(u)); return x.protocol==='https:' ? x.href : ''; } catch{return ''}};
 const initials=(s)=>String(s||'?').trim().split(/\s+/).map(x=>x[0]).slice(0,2).join('').toUpperCase();
 const statusBadge=(s)=>'<span class="badge '+(s==='submitted'?'':s==='blocked'?'red':s==='in_progress'?'blue':s==='pending'?'warn':'neutral')+'">'+esc(String(s).replaceAll('_',' '))+'</span>';
-const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><input id="'+esc(id)+'" type="'+esc(type)+'" value="'+esc(value)+'" '+extra+'></div>';
-const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
+const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'].includes(type)?'<div class="field-editor-tools"><button class="btn ghost tiny" type="button" data-action="expand-field" data-field="'+esc(id)+'">Expand</button><button class="btn ghost tiny" type="button" data-action="voice-field" data-field="'+esc(id)+'">Voice</button></div>':'';return '<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label>'+tools+'</div><input id="'+esc(id)+'" type="'+esc(type)+'" value="'+esc(value)+'" '+extra+'></div>';};
+const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="btn ghost tiny" type="button" data-action="expand-field" data-field="'+esc(id)+'">Expand</button><button class="btn ghost tiny" type="button" data-action="voice-field" data-field="'+esc(id)+'">Voice</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
 const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:''};
 let resultSearchTimer=null;
+let activeSpeechRecognition=null;
+let activeSpeechTarget=null;
+let activeSpeechBase='';
+let activeSpeechFinal='';
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -107,12 +111,15 @@ function profilePage(){
  const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
  const cleanInstructions=String(p.search_instructions||'').replace(/^LinkedIn profile: https:\/\/[^\s]+\n?/m,'');
  const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
+ const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
+ const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
+ const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
  const headingExtra=operator
    ?'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="view-ai-prompt">View Full AI Search Prompt</button><button class="btn ghost small" data-action="navigate" data-page="import">Back to Job Search</button></div>'
    :'<button class="btn outline small" data-action="view-ai-prompt">View Full AI Search Prompt</button>';
  let html=head(operator?'Customer setup':'Customer onboarding',operator?customerName(id)+' · Profile & Search Preferences':'Build your career search',operator?'Update the selected customer\'s search profile and preferences used by MatchPath AI Job Search.':'Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.',headingExtra);
  html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
- '<section class="card profile-panel"><h2>Search focus</h2>'+area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent / transferable roles',p.transferable_roles)+area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+'</section>'+
+ '<section class="card profile-panel"><h2>Search focus</h2>'+area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent / transferable roles',p.transferable_roles)+area('industries','Industries and sectors',p.industries)+'<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">Select all that apply</span></div><div class="multi-check-grid">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" name="employment_type" value="'+esc(x)+'" '+(selectedEmployment.includes(x)?'checked':'')+'> '+esc(x)+'</label>').join('')+'</div></div>'+'</section>'+
  '<section class="card profile-panel"><h2>Location, work & compensation</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+'<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_min','Minimum compensation',p.salary_min||'','number','min="0"')+'</div><div class="form-row"><div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+area('pension_preferences','Benefits / pension preferences',p.pension_preferences)+'</section>'+
  '<section class="card profile-panel"><h2>Career priorities</h2><div class="profile-objectives">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+area('career_goals_detail','Career destination, priorities and timeline',goalsFree)+'</section>'+
  '<section class="card profile-panel"><h2>AI search controls</h2>'+field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+area('search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+'<div class="form-row">'+field('min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+'<div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div></section>'+
@@ -331,7 +338,62 @@ async function loadData(knownUser=null){
 const refresh=async()=>{try{await loadData();}catch(e){notice(errorMsg(e),true)}};
 function errorMsg(e){return e?.message || String(e || 'Unknown error')}
 function openDialog(title,body,wide=false){$('#dialogTitle').textContent=title;$('#dialogBody').innerHTML=body;$('#dialog .modal')?.classList.toggle('wide',wide);$('#dialog').classList.remove('hidden')}
-function closeDialog(){$('#dialog').classList.add('hidden');$('#dialog .modal')?.classList.remove('wide');$('#dialogBody').replaceChildren()}
+function closeDialog(){stopVoiceInput();$('#dialog').classList.add('hidden');$('#dialog .modal')?.classList.remove('wide');$('#dialogBody').replaceChildren()}
+function speechRecognitionClass(){return window.SpeechRecognition||window.webkitSpeechRecognition||null}
+function setVoiceButtons(listening){
+ document.querySelectorAll('[data-action="start-expanded-voice"],[data-action="stop-expanded-voice"]').forEach(b=>{
+  if(b.dataset.action==='start-expanded-voice')b.disabled=listening;
+  if(b.dataset.action==='stop-expanded-voice')b.disabled=!listening;
+ });
+}
+function stopVoiceInput(){
+ if(activeSpeechRecognition){try{activeSpeechRecognition.stop()}catch{}}
+ activeSpeechRecognition=null;
+ activeSpeechTarget=null;
+ activeSpeechBase='';
+ activeSpeechFinal='';
+ setVoiceButtons(false);
+}
+function startVoiceInput(target){
+ const Recognition=speechRecognitionClass();
+ if(!Recognition)throw Error('Voice transcription is not supported in this browser. Use Chrome, Edge, or another browser with speech recognition enabled.');
+ stopVoiceInput();
+ const recognition=new Recognition();
+ recognition.lang=navigator.language||'en-CA';
+ recognition.continuous=true;
+ recognition.interimResults=true;
+ activeSpeechRecognition=recognition;
+ activeSpeechTarget=target;
+ activeSpeechBase=target.value.trimEnd();
+ activeSpeechFinal='';
+ recognition.onstart=()=>setVoiceButtons(true);
+ recognition.onresult=(event)=>{
+  let interim='';
+  for(let i=event.resultIndex;i<event.results.length;i++){
+   const spoken=event.results[i][0]?.transcript||'';
+   if(event.results[i].isFinal)activeSpeechFinal+=(activeSpeechFinal?' ':'')+spoken.trim();
+   else interim+=(interim?' ':'')+spoken.trim();
+  }
+  const transcript=[activeSpeechFinal,interim].filter(Boolean).join(' ');
+  target.value=activeSpeechBase+(activeSpeechBase&&transcript?' ':'')+transcript;
+ };
+ recognition.onerror=(event)=>{
+  if(event.error!=='aborted'&&event.error!=='no-speech')notice('Voice transcription: '+event.error,true);
+ };
+ recognition.onend=()=>{activeSpeechRecognition=null;setVoiceButtons(false)};
+ recognition.start();
+}
+function openExpandedEditor(fieldId,startVoice=false){
+ const source=document.getElementById(fieldId);
+ if(!source)throw Error('Field unavailable.');
+ const label=source.closest('.field')?.querySelector('label')?.textContent||'Edit text';
+ const supported=!!speechRecognitionClass();
+ openDialog(label,'<textarea id="expandedFieldEditor" class="expanded-field-editor">'+esc(source.value)+'</textarea><div class="expanded-editor-footer"><div><span class="hint">Use the larger editor for longer profile and search instructions.</span><br><span class="hint">'+(supported?'Voice transcription uses your browser speech-recognition service and may process audio through the browser provider.':'Voice transcription is not supported by this browser.')+'</span></div><div class="stack">'+(supported?'<button class="btn outline small" type="button" data-action="start-expanded-voice">Start Voice Input</button><button class="btn ghost small" type="button" data-action="stop-expanded-voice" disabled>Stop Voice Input</button>':'')+'<button class="btn" type="button" data-action="save-expanded-field" data-field="'+esc(fieldId)+'">Use This Text</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></div></div>',true);
+ const editor=$('#expandedFieldEditor');
+ editor.focus();
+ editor.setSelectionRange(editor.value.length,editor.value.length);
+ if(startVoice&&supported)startVoiceInput(editor);
+}
 function profileFormValues(){
  const score=Number($('#min_fit_score').value);
  if(!Number.isInteger(score)||score<0||score>100)throw Error('Fit score must be between 0 and 100');
@@ -353,7 +415,7 @@ function profileFormValues(){
   service_tier:$('#service_tier').value,
   salary_currency:$('#salary_currency').value,
   transferable_roles:$('#transferable_roles').value,
-  employment_types:$('#employment_types').value,
+  employment_types:[...document.querySelectorAll('input[name="employment_type"]:checked')].map(x=>x.value).join('; '),
   industries:$('#industries').value,
   relocation_preferences:$('#relocation_preferences').value,
   pension_preferences:$('#pension_preferences').value,
@@ -453,6 +515,18 @@ async function handleClick(target){
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
  if(action==='navigate'){state.page=target.dataset.page;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
+ if(action==='expand-field'){openExpandedEditor(target.dataset.field,false);return}
+ if(action==='voice-field'){openExpandedEditor(target.dataset.field,true);return}
+ if(action==='start-expanded-voice'){
+  const editor=$('#expandedFieldEditor');if(!editor)throw Error('Editor unavailable.');
+  startVoiceInput(editor);return;
+ }
+ if(action==='stop-expanded-voice'){stopVoiceInput();return}
+ if(action==='save-expanded-field'){
+  const source=document.getElementById(target.dataset.field),editor=$('#expandedFieldEditor');
+  if(!source||!editor)throw Error('Editor field unavailable.');
+  stopVoiceInput();source.value=editor.value;source.dispatchEvent(new Event('input',{bubbles:true}));closeDialog();return;
+ }
  if(action==='decision'){
   if(!confirm('Record this job as '+target.dataset.decision+'?'))return;
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
