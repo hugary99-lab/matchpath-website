@@ -43,3 +43,7 @@
 .check-option{display:flex;align-items:center;gap:7px;font-size:13px;color:#456271;cursor:pointer}
 .check-option input{width:auto;margin:0}
 @media(max-width:660px){.expanded-editor-footer{flex-direction:column}.multi-check-grid{grid-template-columns:1fr}}
+
+.profile-heading-tools{justify-content:flex-end;align-items:flex-end}
+.profile-heading-tools>.field{margin:0}
+.profile-section-actions{display:flex;justify-content:flex-end;margin-top:8px;padding-top:10px;border-top:1px solid var(--edge)}
