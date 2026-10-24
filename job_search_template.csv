@@ -1,2 +1,2 @@
-searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
-2026-10-24T13:05:00-04:00,Implementation Manager,Example Company,"Toronto, ON",Hybrid,120000,140000,CAD,https://example.org/jobs/demo-001,Employer site,93,Qualified,Relevant implementation leadership,Example row only; not a real vacancy
+searched_at,job_title,company,requisition_id,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
+2026-10-24T14:03:00-04:00,Senior Financial Analyst,Example Ontario Agency,REQ-DEMO-001,"Toronto, ON",Hybrid,90000,115000,CAD,https://example.org/jobs/demo-001,Employer site,94,Qualified,"Strong budgeting, forecasting, variance analysis and SAP match","Example row only; not a real vacancy"
