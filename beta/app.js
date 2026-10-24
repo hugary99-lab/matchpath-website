@@ -33,7 +33,7 @@ function renderAuth(mode='login'){
  const signup=mode==='signup';
  $('#page').innerHTML='<div class="auth"><section class="card"><div class="eyebrow">Member access</div><h1>'+(signup?'Create your account':'Welcome back')+'</h1><p>'+(signup?'Start your confidential career-search profile. No charges are collected in this beta.':'Sign in to your personal MatchPath workspace.')+'</p><form id="authForm" data-mode="'+mode+'">'+(signup?field('authName','Your name','','text','autocomplete="name" required'):'')+field('authEmail','Email address','','email','autocomplete="email" required')+field('authPassword','Password','','password','autocomplete="'+(signup?'new-password':'current-password')+'" minlength="8" required')+'<button class="btn" type="submit">'+(signup?'Create account':'Sign in')+'</button></form><div class="auth-switch">'+(signup?'Already registered? <button class="btn ghost small" data-action="show-login">Sign in</button>':'New customer? <button class="btn ghost small" data-action="show-signup">Create account</button>')+'</div><hr><p class="hint">Staff and admin access is assigned by an administrator. Creating an account does not grant staff permissions.</p></section></div>';
 }
-function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads'],['admin','Accounts & access']];}
+function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['results','Search results'],['workbench','Approved applications'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['results','Search results'],['workbench','Approved applications'],['documents','Document uploads'],['admin','Accounts & access']];}
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
  const r=state.account.role;
@@ -116,6 +116,25 @@ function importPage(){
  if(state.csvPreview){const v=state.csvPreview;html+='<section class="card section"><h2>2. Validate and commit</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>'}
  return html;
 }
+function searchResultsPage(){
+ const id=currentCustomer(),rows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)),p=currentProfile(),threshold=p?.min_fit_score??90;
+ let html=head('Staff operations','Search results','Inspect every imported posting for the selected customer. Customer approval remains customer-only; staff/admin cannot silently approve on the customer’s behalf.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
+ const qualified=rows.filter(j=>j.qualification_status==='Qualified').length;
+ const verify=rows.filter(j=>j.qualification_status==='Needs Verification').length;
+ const pendingReview=rows.filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold&&j.review_status==='pending').length;
+ html+='<div class="grid"><div class="card stat"><div class="name">Imported jobs</div><div class="value">'+rows.length+'</div></div><div class="card stat"><div class="name">Qualified</div><div class="value">'+qualified+'</div></div><div class="card stat"><div class="name">Needs verification</div><div class="value">'+verify+'</div></div><div class="card stat"><div class="name">Awaiting customer decision</div><div class="value">'+pendingReview+'</div></div></div>';
+ html+='<div class="warning section">Approval is intentionally restricted to the customer login. Qualified jobs at or above the customer fit threshold appear in the customer <strong>Review job matches</strong> page. <strong>Needs Verification</strong> jobs are held until the uncertainty is resolved.</div>';
+ html+='<div class="flex-col section">'+rows.map(j=>{
+   const eligible=j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold;
+   const workflow=j.review_status==='approved'?'Customer approved':j.review_status==='rejected'?'Customer rejected':eligible?'Awaiting customer approval':j.qualification_status==='Needs Verification'?'Held for verification':j.qualification_status==='Not Qualified'?'Not qualified':'Below customer fit threshold';
+   const cls=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+   const app=state.apps.find(a=>a.job_id===j.id);
+   return '<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</span></div><div class="stack"><span class="badge '+cls+'">'+esc(j.qualification_status)+'</span>'+statusBadge(j.review_status)+'<span class="badge neutral">'+esc(workflow)+'</span>'+(j.requisition_id?'<span class="pill">Req '+esc(j.requisition_id)+'</span>':'')+(app?'<span class="pill">'+esc(app.application_code)+'</span>':'')+'</div><p>'+esc(j.fit_reason||'')+'</p>'+(j.concerns?'<p class="hint"><strong>Considerations:</strong> '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a></div></article>';
+ }).join('')+'</div>';
+ return html;
+}
 function workbenchPage(){
  const id=currentCustomer(),a=matchingApps(id).filter(x=>x.status!=='closed').sort((x,y)=>x.status==='submitted'?1:y.status==='submitted'?-1:0);
  let html=head('Step 2 · Staff operations','Approved applications','Work directly from each approved job. Upload the right documents, open the original posting, submit manually, then record the confirmation.',customerPicker());
@@ -150,9 +169,9 @@ function render(){
  buildNav();
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'&&!['overview','matches','applications','profile'].includes(state.page))state.page='overview';
- if(r!=='customer'&&!['overview','import','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
+ if(r!=='customer'&&!['overview','import','results','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
- const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
+ const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,results:searchResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
  $('#page').innerHTML=pageMap[state.page]();
 }
 async function loadData(knownUser=null){
