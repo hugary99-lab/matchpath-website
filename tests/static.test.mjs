@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read = p => readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const jobs=['schema_version','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const jobs=['searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const docs=['schema_version','customer_id','application_id','resume_file','cover_letter_file'];
 test('CSV formats are frozen and correctly documented',()=>{
  assert.deepEqual(read('job_search_template.csv').split(/\r?\n/)[0].split(','),jobs);
@@ -25,8 +25,8 @@ test('security migration enables RLS and secures document buckets',()=>{
 });
 test('search import identity is owned by MatchPath, not the CSV',()=>{
  const app=read('beta/app.js');
- assert.match(app,/MatchPath Standard v1\.0 \(15 exact columns\)/);
- assert.match(app,/customer_id:customer,search_run_id:state\.csvPreview\.runId/);
+ assert.match(app,/MatchPath Standard v1\.0 \(14 exact columns\)/);
+ assert.match(app,/schema_version:'1\.0',customer_id:customer,search_run_id:state\.csvPreview\.runId/);
  assert.match(app,/const run='MP-'/);
 });
 test('public config contains only browser-safe Supabase connection values',()=>{
