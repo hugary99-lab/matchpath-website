@@ -33,7 +33,7 @@ function renderAuth(mode='login'){
  const signup=mode==='signup';
  $('#page').innerHTML='<div class="auth"><section class="card"><div class="eyebrow">Member access</div><h1>'+(signup?'Create your account':'Welcome back')+'</h1><p>'+(signup?'Start your confidential career-search profile. No charges are collected in this beta.':'Sign in to your personal MatchPath workspace.')+'</p><form id="authForm" data-mode="'+mode+'">'+(signup?field('authName','Your name','','text','autocomplete="name" required'):'')+field('authEmail','Email address','','email','autocomplete="email" required')+field('authPassword','Password','','password','autocomplete="'+(signup?'new-password':'current-password')+'" minlength="8" required')+'<button class="btn" type="submit">'+(signup?'Create account':'Sign in')+'</button></form><div class="auth-switch">'+(signup?'Already registered? <button class="btn ghost small" data-action="show-login">Sign in</button>':'New customer? <button class="btn ghost small" data-action="show-signup">Create account</button>')+'</div><hr><p class="hint">Staff and admin access is assigned by an administrator. Creating an account does not grant staff permissions.</p></section></div>';
 }
-function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['workbench','Approved applications'],['documents','Document uploads'],['admin','Accounts & access']];}
+function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];}
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
  const r=state.account.role;
@@ -63,7 +63,6 @@ function dashboard(){
  let html=head(role==='customer'?'My career search':role==='staff'?'Staff operations':'Administration','Good '+(new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening')+', '+(state.account.full_name?.split(' ')[0]||'there'),role==='customer'?'Your job matches and application activity, in one place.':'Select a customer, review imported jobs, authorize the right opportunities, prepare documents, and track applications.',role==='customer'?'':customerPicker());
  html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';
  if(!id&&role!=='customer')return html+'<div class="card section empty"><strong>No assigned customers yet</strong>Admin can assign customers in Accounts & access.</div>';
- if(role!=='customer')html+=jobResultsPanel();
  html+='<div class="section grid two"><div class="card"><h2>'+(role==='customer'?'What happens next':'Daily workflow')+'</h2><ul class="checklist">'+(role==='customer'?'<li>Review your verified job matches</li><li>Approve the jobs you want pursued</li><li>Access documents and submission updates</li>':'<li>Choose a customer and import a search CSV</li><li>Review and authorize the right jobs</li><li>Upload job-specific resume and cover letter PDFs</li><li>Apply on employer site and record confirmation</li>')+'</ul><button class="btn" data-action="navigate" data-page="'+(role==='customer'?'matches':'import')+'">'+(role==='customer'?'Review matches':'Import search results')+'</button></div><div class="card"><h2>Recent applications</h2>'+(a.length?a.slice(0,4).map(x=>{const j=byId(state.jobs,x.job_id);return '<div class="detail space"><div><div class="title">'+esc(j?.job_title||x.application_code)+'</div><div class="sub">'+esc(j?.company||'')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty"><strong>No applications yet</strong>Approved jobs will appear here.</div>')+'</div></div>';
  if(role!=='customer'){html+='<section class="section card"><h2>Last search batches</h2>'+(state.runs.filter(x=>x.customer_id===id).slice(0,5).map(x=>'<p><span class="pill">'+esc(x.external_id)+'</span> · '+x.new_rows+' new · '+x.duplicate_rows+' duplicates · '+fmtDate(x.created_at)+'</p>').join('')||'<p class="muted">No imports yet.</p>')+'</section>'}
  return html;
@@ -122,15 +121,16 @@ function jobResultUiStatus(j){
  if(app?.status==='submitted')return 'applied';
  return j.review_status==='pending'?'new':j.review_status;
 }
-function jobResultsPanel(){
+function jobResultsPanel(forcedStatus='all'){
  const id=currentCustomer(),allRows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  if(!id)return '<div class="card section empty">No customer assigned.</div>';
  if(!allRows.length)return '<section class="card section empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
 
- const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':s==='applied'?'Applied':'Rejected';
+ const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':s==='applied'?'Submitted':'Rejected';
  const search=state.resultSearch.trim().toLowerCase();
+ const activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
  const rows=allRows.filter(j=>{
-   if(state.resultStatusFilter!=='all'&&jobResultUiStatus(j)!==state.resultStatusFilter)return false;
+   if(activeStatus!=='all'&&jobResultUiStatus(j)!==activeStatus)return false;
    if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
    if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
    return true;
@@ -144,25 +144,31 @@ function jobResultsPanel(){
    rejected:allRows.filter(j=>jobResultUiStatus(j)==='rejected').length
  };
 
- let html='<section class="section"><div class="space section-head"><div><h2>Job results</h2><p class="hint">Filter jobs and update workflow status. Admin changes are audit logged. Applied requires a confirmed employer submission.</p></div><div class="stack"><span class="badge neutral">'+counts.new+' New</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Applied</span></div></div>';
+ let html='<section class="section">';
+ html+='<div class="stack section-head"><span class="badge neutral">'+counts.new+' To review</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
 
- html+='<section class="card"><form id="resultFilterForm"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div><div class="field"><label for="resultStatusFilter">Status</label><select id="resultStatusFilter"><option value="all">All statuses</option>'+[['new','New'],['approved','Approved'],['applied','Applied'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(state.resultStatusFilter===v?'selected':'')+'>'+n+'</option>').join('')+'</select></div><div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown · '+counts.skipped+' skipped · '+counts.rejected+' rejected</span></div></form></section>';
+ html+='<section class="card"><form id="resultFilterForm"><input type="hidden" id="forcedResultStatus" value="'+esc(forcedStatus)+'"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div>'+(forcedStatus==='all'?'<div class="field"><label for="resultStatusFilter">Status</label><select id="resultStatusFilter"><option value="all">All statuses</option>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(state.resultStatusFilter===v?'selected':'')+'>'+n+'</option>').join('')+'</select></div>':'')+'<div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown</span></div></form></section>';
 
  html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Employer / role</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
    const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
    const current=jobResultUiStatus(j);
    const lockedApplied=current==='applied';
    const statusControl=state.account.role==='admin'
-     ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:120px" '+(lockedApplied?'disabled title="Applied records are immutable"':'')+'>'+[['new','New'],['approved','Approved'],['applied','Applied'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
+     ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:132px" '+(lockedApplied?'disabled title="Submitted records are immutable"':'')+'>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
      :'<span class="badge neutral">'+esc(statusLabel(current))+'</span>';
    const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(state.account.role==='admin'&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="workbench">Approved result</button>':'')+'</div></td></tr>';
+   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(state.account.role==='admin'&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Documents</button>':'')+'</div></td></tr>';
  }).join('')+'</tbody></table></div></section></section>';
  return html;
 }
-function searchResultsPage(){
- return head('Staff operations','Search results','Review imported jobs and workflow status.',customerPicker())+jobResultsPanel();
+function queuePage(status,title,description){
+ return head('Staff operations',title,description,customerPicker())+jobResultsPanel(status);
 }
+function newResultsPage(){return queuePage('new','To be reviewed','New imported search results waiting for Admin review and disposition.');}
+function approvedResultsPage(){return queuePage('approved','Approved search results','Jobs authorized for application preparation but not yet submitted.');}
+function submittedResultsPage(){return queuePage('applied','Submitted','Applications confirmed as submitted to the employer.');}
+function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs intentionally retained but not currently being pursued.');}
+function allResultsPage(){return queuePage('all','All search results','Complete search-result history for the selected customer, including rejected items.');}
 function workbenchPage(){
  const id=currentCustomer(),a=matchingApps(id).filter(x=>x.status!=='closed').sort((x,y)=>x.status==='submitted'?1:y.status==='submitted'?-1:0);
  let html=head('Step 2 · Staff operations','Approved applications','Work directly from each approved job. Upload the right documents, open the original posting, submit manually, then record the confirmation.',customerPicker());
@@ -197,9 +203,9 @@ function render(){
  buildNav();
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'&&!['overview','matches','applications','profile'].includes(state.page))state.page='overview';
- if(r!=='customer'&&!['overview','import','results','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
+ if(r!=='customer'&&!['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
- const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,results:searchResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
+ const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,'queue-new':newResultsPage,'queue-approved':approvedResultsPage,'queue-submitted':submittedResultsPage,'queue-skipped':skippedResultsPage,'queue-all':allResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
  $('#page').innerHTML=pageMap[state.page]();
 }
 async function loadData(knownUser=null){
@@ -305,15 +311,15 @@ async function handleClick(target){
     const {error:readyError}=await state.sb.rpc('staff_set_application_status',{p_application:app.id,p_status:'ready',p_reference:null,p_note:'Prepared for Admin-confirmed submission.'});
     if(readyError)throw readyError;
    }
-   openDialog('Confirm actual job application','<p class="warning">Use Applied only after the employer application was genuinely submitted. Record a confirmation/reference or verifiable acknowledgment.</p><form id="submitForm" data-app="'+esc(app.id)+'" data-return-page="overview">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm Applied</button></form>');
+   openDialog('Confirm actual job application','<p class="warning">Use Applied only after the employer application was genuinely submitted. Record a confirmation/reference or verifiable acknowledgment.</p><form id="submitForm" data-app="'+esc(app.id)+'" data-return-page="queue-submitted">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm Applied</button></form>');
    return;
   }
   const {error}=await state.sb.rpc('admin_set_job_review_status',{p_job:job.id,p_status:next});
   if(error)throw error;
   await loadData(state.me);
-  state.page='overview';
+  state.page=next==='new'?'queue-new':next==='approved'?'queue-approved':next==='skipped'?'queue-skipped':'queue-all';
   render();
-  notice('Job status saved as '+(next==='new'?'New':next[0].toUpperCase()+next.slice(1))+'.'+(next==='approved'?' It is now in Approved applications.':''));
+  notice('Job status saved as '+(next==='new'?'To be reviewed':next[0].toUpperCase()+next.slice(1))+'.');
   return;
  }
  if(action==='clear-result-filters'){
@@ -358,7 +364,7 @@ async function handleSubmit(form){
  const type=form.id;
  if(type==='resultFilterForm'){
   state.resultSearch=$('#resultSearch')?.value||'';
-  state.resultStatusFilter=$('#resultStatusFilter')?.value||'all';
+  if($('#resultStatusFilter'))state.resultStatusFilter=$('#resultStatusFilter').value||'all';
   state.resultQualificationFilter=$('#resultQualificationFilter')?.value||'all';
   render();
   return;
@@ -442,8 +448,8 @@ async function handleSubmit(form){
   if(ref.length<3)throw Error('Submission reference is required');
   const {error}=await state.sb.rpc('staff_set_application_status',{p_application:form.dataset.app,p_status:'submitted',p_reference:ref,p_note:$('#submissionNotes').value});
   if(error)throw error;closeDialog();await loadData();
-  if(form.dataset.returnPage==='overview'){state.page='overview';render();}
-  notice('Application marked Applied, with exact submitted document versions preserved.');return;
+  if(form.dataset.returnPage){state.page=form.dataset.returnPage;render();}
+  notice('Application marked Submitted, with exact submitted document versions preserved.');return;
  }
 }
 function parseCsv(text){
