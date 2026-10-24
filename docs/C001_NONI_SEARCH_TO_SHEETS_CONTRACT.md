@@ -35,11 +35,14 @@ The CSV intentionally does **not** contain:
 - `customer_id`
 - `search_run_id`
 
-At upload time MatchPath:
+At upload time MatchPath backend:
 1. applies the current MatchPath import schema version (`1.0`);
-2. takes the customer from the currently selected authenticated workspace;
-3. generates a unique external search-run ID;
-4. attaches all three system-owned values to each row before database validation and passes them to the backend import RPC.
+2. receives the customer selected in the authenticated staff/admin workspace and validates that the actor may work on that customer;
+3. generates a unique external search-run ID inside Supabase;
+4. stores the internal customer ID and internal search-run UUID on imported jobs;
+5. records the generated metadata in the run/audit response.
+
+The browser does not generate or inject schema/run metadata into CSV rows.
 
 This prevents ChatGPT from assigning a result to the wrong customer or reusing a stale run ID.
 
@@ -82,9 +85,9 @@ MatchPath, not ChatGPT, is authoritative.
 2. Download the 14-column MatchPath CSV.
 3. In MatchPath staff/admin workspace, select Noni.
 4. Upload the CSV.
-5. MatchPath validates the schema, supplies customer/run identity, and previews the batch.
+5. MatchPath validates the 14 job-result columns and previews the batch.
 6. Commit the import.
-7. Backend deduplicates against Noni's existing jobs and applications and preserves existing states.
+7. Supabase assigns schema/customer/run metadata, deduplicates against Noni's existing jobs and applications, and preserves existing states.
 8. Review the run counts and any held results.
 
 ## Required acceptance tests
@@ -101,4 +104,4 @@ I. Invalid/unverified URLs never become trusted new jobs.
 J. Audit history records the actor and time.
 
 ## Notes
-The current production backend still validates schema version and accepts customer/run identifiers. The MatchPath UI now supplies `schema_version=1.0`, customer identity and run identity before calling the RPC; ChatGPT no longer supplies any of those system fields in the CSV.
+The production backend now owns `schema_version=1.0` and generates the search-run ID. The authenticated MatchPath workspace supplies only the selected customer parameter; the CSV contains none of these system fields.
