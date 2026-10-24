@@ -4,7 +4,7 @@
  * Run importMatchPathCsv() from the editor, or install a menu with onOpen().
  * CSV is read from a private Google Drive CSV file ID; never expose as a public web app.
  */
-const MP_HEADERS = ['schema_version','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const MP_HEADERS = ['searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const MP_JOB_HEADERS = ['job_key','search_run_id','discovered_at','employer','job_title','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','posting_verified_at','mandatory_status','fit_score','fit_evidence','concerns','status','approved_at','applied_at','application_confirmation','last_updated_at'];
 const MP_ALLOWED = ['Qualified','Not Qualified','Needs Verification'];
 function onOpen() {
@@ -44,9 +44,8 @@ function mpValidate_(text) {
   if(!rows.length||rows[0].join('|')!==MP_HEADERS.join('|'))throw Error('CSV header mismatch');
   const seen=new Set();
   return rows.slice(1).map((cells,index)=>{
-    if(cells.length!==15)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 15');
+    if(cells.length!==14)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 14');
     const r=Object.fromEntries(MP_HEADERS.map((h,i)=>[h,cells[i]]));
-    if(r.schema_version!=='1.0')throw Error('Unexpected schema version on row '+(index+2));
     if(!MP_ALLOWED.includes(r.qualification_status))throw Error('Invalid qualification on row '+(index+2));
     if(!r.job_title||!r.company||!r.searched_at||isNaN(Date.parse(r.searched_at)))throw Error('Missing required field on row '+(index+2));
     if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||+r.fit_score>100))throw Error('Invalid score on row '+(index+2));
@@ -57,7 +56,8 @@ function mpValidate_(text) {
 }
 function mpRead_(sheet) {return sheet.getDataRange().getValues();}
 function importMatchPathCsvText_(text) {
-  const incoming=mpValidate_(text);\n  const runId='MP-C001-NONI-'+Utilities.formatDate(new Date(),'GMT',\"yyyyMMdd'T'HHmmss'Z'\")+'-'+Utilities.getUuid().slice(0,8);
+  const incoming=mpValidate_(text);
+  const runId='MP-C001-NONI-'+Utilities.formatDate(new Date(),'GMT',\"yyyyMMdd'T'HHmmss'Z'\")+'-'+Utilities.getUuid().slice(0,8);
   const lock=LockService.getDocumentLock();if(!lock.tryLock(30000))throw Error('Another import is running');
   try{
     const ss=SpreadsheetApp.getActiveSpreadsheet(),jobs=ss.getSheetByName('Jobs'),runs=ss.getSheetByName('Runs');
