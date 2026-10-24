@@ -212,7 +212,7 @@ function updateApprovedBulkState(){
  const count=approvedSelectionIds().length;
  const label=$('#approvedSelectedCount');
  if(label)label.textContent=count+' selected';
- ['approvedResumeBatch','approvedSaveStatus','approvedMarkSubmitted','approvedOpenPostings'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+ ['approvedResumeBatch','approvedSaveStatus','approvedMarkSubmitted'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
 }
 function approvedResultsPage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='approved').sort((a,b)=>(b.fit_score??-1)-(a.fit_score??-1));
@@ -226,7 +226,7 @@ function approvedResultsPage(){
  });
  html+=resultFilterControls('approved',rows.length,allRows.length);
  const selectedCount=approvedSelectionIds().length;
- html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Create / Download Resumes</button><button class="btn outline small" id="approvedSaveStatus" data-action="approved-save-status" '+(selectedCount?'':'disabled')+'>Save Status</button><button class="btn small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>Mark Submitted</button><button class="btn ghost small" id="approvedOpenPostings" data-action="approved-open-postings" '+(selectedCount?'':'disabled')+'>Open Selected Postings ↗</button></div></div>';
+ html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Download AI Resumes/Cover Letter</button><button class="btn outline small" id="approvedSaveStatus" data-action="approved-save-status" '+(selectedCount?'':'disabled')+'>Save Status</button><button class="btn outline small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>Mark Submitted</button></div></div>';
  if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs match the current filters.</strong></section>';
  html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed');
@@ -457,11 +457,6 @@ async function handleClick(target){
   state.approvedSelections={};state.approvedStatusDrafts={};
   await loadData(state.me);state.page='queue-approved';render();
   notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
- }
- if(action==='approved-open-postings'){
-  const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
-  ids.map(id=>byId(state.jobs,id)).filter(Boolean).forEach(j=>{const u=safeUrl(j.job_url);if(u)window.open(u,'_blank','noopener,noreferrer')});
-  return;
  }
  if(action==='approved-mark-submitted'){
   if(!canOperateUi())throw Error('Not authorized.');
