@@ -105,6 +105,15 @@ The backend must not guess an ID from an arbitrary number in a URL.
 10. Supabase deduplicates against existing Noni jobs and application records.
 11. Review the import counts and held items.
 
+## Historical application prerequisite
+
+The deduplication engine can only suppress historical applications that exist in MatchPath. C001-NONI's live Supabase database must be seeded with verified historical application keys before the backend can be treated as complete for previously-applied suppression.
+
+Until that seed is complete:
+- do not report backend-derived applied exclusions unless the import/database response provides them;
+- never suppress a similar title at the same employer without an exact requisition/job key;
+- the research script may use an explicitly supplied legacy applied list only as a temporary safeguard.
+
 ## Acceptance tests
 
 A. CSV has exactly 15 job-result columns and no schema/customer/run metadata columns.  
