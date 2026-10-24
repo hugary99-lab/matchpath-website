@@ -11,17 +11,17 @@ ChatGPT is **not** the system of record for duplicates or previous applications.
 
 For each run, output:
 1. A brief search funnel: discovered, rejected mandatory, needs verification, qualified, recommended.
-2. A machine-readable UTF-8 CSV with EXACTLY the 14-column header below, in order. CSV quoting must be RFC 4180 compliant.
+2. A machine-readable UTF-8 CSV with EXACTLY the 15-column header below, in order. CSV quoting must be RFC 4180 compliant.
 3. Verification notes with source links and unresolved issues.
 
 ## MatchPath Standard v1.0 CSV
 
 ```csv
-searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
+searched_at,job_title,company,requisition_id,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
 ```
 
 Rules:
-- `searched_at` must be an offset-aware ISO 8601 timestamp.
+- `searched_at` must be an offset-aware ISO 8601 timestamp.\n- `requisition_id` should contain the employer/ATS requisition ID only when it is explicitly verified from the posting; otherwise leave it blank. MatchPath may conservatively extract one from clear URL patterns.
 - `job_url` should be the direct official employer/ATS job-specific URL whenever available.
 - `fit_score` is an integer 0-100 or blank when unsupported.
 - `qualification_status` is only `Qualified`, `Not Qualified`, or `Needs Verification`.
@@ -82,17 +82,17 @@ MatchPath, not ChatGPT, is authoritative.
 ## Manual pilot operating steps
 
 1. Run the approved Noni search in ChatGPT.
-2. Download the 14-column MatchPath CSV.
+2. Download the 15-column MatchPath CSV.
 3. In MatchPath staff/admin workspace, select Noni.
 4. Upload the CSV.
-5. MatchPath validates the 14 job-result columns and previews the batch.
+5. MatchPath validates the 15 job-result columns and previews the batch.
 6. Commit the import.
 7. Supabase assigns schema/customer/run metadata, deduplicates against Noni's existing jobs and applications, and preserves existing states.
 8. Review the run counts and any held results.
 
 ## Required acceptance tests
 
-A. The CSV has exactly 14 columns and no customer/run identity fields.
+A. The CSV has exactly 15 columns and no customer/run identity fields.
 B. The selected MatchPath workspace determines the customer.
 C. MatchPath generates a unique run ID.
 D. Two imports of the same posting create only one job.
