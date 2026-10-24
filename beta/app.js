@@ -167,8 +167,9 @@ async function loadData(knownUser=null){
    notice('Saved login unavailable. Sign in to continue. Details: '+errorMsg(e),true);
    return false;
   }
-  if(session.error||!session.data.session?.user){state.me=null;state.account=null;renderAuth();return false;}
+  if(session.error||!session.data.session?.user){state.me=null;state.account=null;state.loginToken=null;renderAuth();return false;}
   state.me=session.data.session.user;
+  state.loginToken=session.data.session.access_token||null;
  }
  const token=state.loginToken;
  if(!token)throw Error('Missing login token. Please sign in again.');
@@ -489,10 +490,28 @@ async function boot(){
   try { sdk=await timeout(import('https://esm.sh/@supabase/supabase-js@2.57.0'),12000,'Primary authentication library'); }
   catch(primaryError) { sdk=await timeout(import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.0/+esm'),12000,'Backup authentication library'); }
   const timedFetch=(url,options={})=>fetch(url,{...options,signal:options.signal||AbortSignal.timeout(10000)});
-  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:false},global:{fetch:timedFetch}});
-  // Deliberately avoid getUser/getSession on startup: stale session refresh locks can block sign-in.
-  // Load account data only after explicit successful authentication.
-  state.sb.auth.onAuthStateChange((event,session)=>{if(event==='SIGNED_OUT'){state.me=null;state.account=null;renderAuth()}});
+  state.sb=sdk.createClient(config.supabaseUrl,config.supabasePublishableKey,{auth:{persistSession:true,autoRefreshToken:true},global:{fetch:timedFetch}});
+  state.sb.auth.onAuthStateChange((event,session)=>{
+   state.loginToken=session?.access_token||null;
+   if(event==='SIGNED_OUT'){state.me=null;state.account=null;state.loginToken=null;renderAuth()}
+  });
+  if(!inviteToken){
+   try{
+    const {data,error}=await timeout(state.sb.auth.getSession(),10000,'Saved authentication session');
+    if(error)throw error;
+    if(data.session?.user){
+     state.loginToken=data.session.access_token||null;
+     state.page='overview';
+     const loaded=await loadData(data.session.user);
+     if(loaded)notice('Signed in from your saved session.');
+    }else{
+     state.me=null;state.account=null;state.loginToken=null;renderAuth('login');
+    }
+   }catch(sessionError){
+    state.me=null;state.account=null;state.loginToken=null;renderAuth('login');
+    notice('Saved login could not be restored. Sign in to continue. Details: '+errorMsg(sessionError),true);
+   }
+  }
  }catch(e){
   $('#sidebar').classList.add('hidden');$('#logoutBtn').classList.add('hidden');
   $('#page').innerHTML='<section class="card" style="max-width:660px"><h1>MatchPath could not finish loading</h1><p>The portal could not connect to its authentication service. Your account has not been changed.</p><p class="hint" id="bootError"></p><button class="btn" id="retryBoot" type="button">Retry loading</button></section>';
