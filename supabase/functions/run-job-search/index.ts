@@ -168,6 +168,19 @@ Deno.serve(async (req: Request) => {
       JSON.stringify(suppress, null, 2) +
       "\n\nSearch for the strongest current openings now. Return structured results only.";
 
+    if (input.preview_only === true) {
+      return respond({
+        ok: true,
+        preview: true,
+        system_prompt: system,
+        user_prompt: userPrompt,
+        full_prompt: system + "\n\n--- USER SEARCH CONTEXT ---\n\n" + userPrompt,
+        profile: profileData,
+        suppress_count: suppress.length,
+        model: Deno.env.get("OPENAI_SEARCH_MODEL") || "gpt-6.1-sol",
+      });
+    }
+
     const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
