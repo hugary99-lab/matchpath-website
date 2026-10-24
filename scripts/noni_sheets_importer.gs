@@ -4,7 +4,7 @@
  * Run importMatchPathCsv() from the editor, or install a menu with onOpen().
  * CSV is read from a private Google Drive CSV file ID; never expose as a public web app.
  */
-const MP_HEADERS = ['searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const MP_HEADERS = ['searched_at','job_title','company','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const MP_JOB_HEADERS = ['job_key','search_run_id','discovered_at','employer','job_title','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','posting_verified_at','mandatory_status','fit_score','fit_evidence','concerns','status','approved_at','applied_at','application_confirmation','last_updated_at'];
 const MP_ALLOWED = ['Qualified','Not Qualified','Needs Verification'];
 function onOpen() {
@@ -39,17 +39,29 @@ function mpKey_(url) {
   u.hash='';['utm_source','utm_medium','utm_campaign','utm_content','utm_term','fbclid','gclid'].forEach(k=>u.searchParams.delete(k));
   u.hostname=u.hostname.toLowerCase();return u.toString().replace(/\/$/,'');
 }
+function mpReq_(explicit,url) {
+  const x=String(explicit||'').trim().replace(/\s+/g,'').toUpperCase();
+  if(x)return x;
+  const q=String(url||'').match(/[?&](?:requisition(?:_?id)?|req(?:_?id)?|job(?:_?id)?|gh_jid)=([^&#]+)/i);
+  if(q&&q[1])return q[1].trim().toUpperCase();
+  const p=String(url||'').match(/(?:^|[\/_-])((?:JR|REQ|REQUISITION)[_-]?[0-9]{3,})(?:$|[\/_.?&#-])/i);
+  return p&&p[1]?p[1].replace(/\s+/g,'').toUpperCase():'';
+}
+function mpReqKey_(company,req) {
+  const r=String(req||'').trim().replace(/\s+/g,'').toUpperCase();
+  return r?String(company||'').trim().replace(/\s+/g,' ').toLowerCase()+'|'+r:'';
+}
 function mpValidate_(text) {
   const rows=mpParseCsv_(text);
   if(!rows.length||rows[0].join('|')!==MP_HEADERS.join('|'))throw Error('CSV header mismatch');
   const seen=new Set();
   return rows.slice(1).map((cells,index)=>{
-    if(cells.length!==14)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 14');
+    if(cells.length!==15)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 15');
     const r=Object.fromEntries(MP_HEADERS.map((h,i)=>[h,cells[i]]));
     if(!MP_ALLOWED.includes(r.qualification_status))throw Error('Invalid qualification on row '+(index+2));
     if(!r.job_title||!r.company||!r.searched_at||isNaN(Date.parse(r.searched_at)))throw Error('Missing required field on row '+(index+2));
     if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||+r.fit_score>100))throw Error('Invalid score on row '+(index+2));
-    const key=mpKey_(r.job_url);
+    const key=mpKey_(r.job_url);\n    r.requisition_id=mpReq_(r.requisition_id,r.job_url);\n    r.reqKey=mpReqKey_(r.company,r.requisition_id);
     if(seen.has(key))throw Error('Duplicate job URL within incoming CSV: '+key);
     seen.add(key);r.key=key;return r;
   });
@@ -64,22 +76,22 @@ function importMatchPathCsvText_(text) {
     if(!jobs||!runs)throw Error('Jobs/Runs tabs missing');
     const data=mpRead_(jobs),head=data[0].map(String);
     if(head.join('|')!==MP_JOB_HEADERS.join('|'))throw Error('Jobs header mismatch; refusing write');
-    const existing=new Map();
+    const existing=new Map(),existingReq=new Map();
     for(let i=1;i<data.length;i++){
       if(!data[i][0])continue;
       const key=mpKey_(String(data[i][11]||data[i][0]));
       if(existing.has(key))throw Error('Duplicate key already in sheet: '+key);
-      existing.set(key,{row:i+1,values:data[i]});
+      const item={row:i+1,values:data[i]};\n      existing.set(key,item);\n      const reqKey=mpReqKey_(String(data[i][3]||''),String(data[i][5]||''));\n      if(reqKey){if(existingReq.has(reqKey))throw Error('Duplicate requisition already in sheet: '+reqKey);existingReq.set(reqKey,item);}
     }
     
     const updates=[],additions=[];let duplicate=0,held=0,excluded=0;
     const now=new Date().toISOString();
     incoming.forEach(r=>{
-      const old=existing.get(r.key);
+      const old=(r.reqKey&&existingReq.get(r.reqKey))||existing.get(r.key);
       if(r.qualification_status==='Not Qualified'){excluded++;return;}
       const status=r.qualification_status==='Qualified'?'New':'Hold';
       if(status==='Hold')held++;
-      const record=[r.key,runId,r.searched_at,r.company,r.job_title,'',r.location,r.work_arrangement,r.salary_min?Number(r.salary_min):'',r.salary_max?Number(r.salary_max):'',r.currency,r.job_url,r.source,'',r.qualification_status==='Qualified'?'Pass':'Hold',r.fit_score===''?'':Number(r.fit_score),r.fit_reason,r.concerns,status,'','','',now];
+      const record=[r.key,runId,r.searched_at,r.company,r.job_title,r.requisition_id||'',r.location,r.work_arrangement,r.salary_min?Number(r.salary_min):'',r.salary_max?Number(r.salary_max):'',r.currency,r.job_url,r.source,'',r.qualification_status==='Qualified'?'Pass':'Hold',r.fit_score===''?'':Number(r.fit_score),r.fit_reason,r.concerns,status,'','','',now];
       if(old){
         duplicate++;
         // Preserve all existing workflow and application fields; only refresh non-status descriptive fields.
