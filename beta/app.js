@@ -379,7 +379,7 @@ function exactColumns(actual,expected){return actual.length===expected.length&&a
 async function validateCsvFile(file){
  if(!file||file.size>3*1024*1024)throw Error('CSV must be under 3 MB');
  const {keys,rows}=parseCsv(await file.text());
- if(!exactColumns(keys,SCHEMA))throw Error('CSV header does not match MatchPath Standard v1.0 (15 exact columns).');
+ if(!exactColumns(keys,SCHEMA))throw Error('CSV header does not match MatchPath Standard v1.0 (15 exact columns). Expected: '+SCHEMA.join(',')+' | Received: '+keys.join(','));
  if(!rows.length||rows.length>250)throw Error('CSV batch must contain 1–250 rows');
  rows.forEach((r,i)=>{
   if(!r.searched_at||!Number.isFinite(Date.parse(r.searched_at)))throw Error('Row '+(i+2)+': missing or invalid search timestamp');
