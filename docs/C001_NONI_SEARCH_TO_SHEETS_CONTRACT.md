@@ -11,17 +11,16 @@ ChatGPT is **not** the system of record for duplicates or previous applications.
 
 For each run, output:
 1. A brief search funnel: discovered, rejected mandatory, needs verification, qualified, recommended.
-2. A machine-readable UTF-8 CSV with EXACTLY the 15-column header below, in order. CSV quoting must be RFC 4180 compliant.
+2. A machine-readable UTF-8 CSV with EXACTLY the 14-column header below, in order. CSV quoting must be RFC 4180 compliant.
 3. Verification notes with source links and unresolved issues.
 
 ## MatchPath Standard v1.0 CSV
 
 ```csv
-schema_version,searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
+searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
 ```
 
 Rules:
-- `schema_version` must be `1.0`.
 - `searched_at` must be an offset-aware ISO 8601 timestamp.
 - `job_url` should be the direct official employer/ATS job-specific URL whenever available.
 - `fit_score` is an integer 0-100 or blank when unsupported.
@@ -32,14 +31,15 @@ Rules:
 ## Identity ownership
 
 The CSV intentionally does **not** contain:
+- `schema_version`
 - `customer_id`
 - `search_run_id`
 
 At upload time MatchPath:
-1. takes the customer from the currently selected authenticated workspace;
-2. generates a unique external search-run ID;
-3. passes both values to the backend import RPC;
-4. attaches the generated values to each row before database validation.
+1. applies the current MatchPath import schema version (`1.0`);
+2. takes the customer from the currently selected authenticated workspace;
+3. generates a unique external search-run ID;
+4. attaches all three system-owned values to each row before database validation and passes them to the backend import RPC.
 
 This prevents ChatGPT from assigning a result to the wrong customer or reusing a stale run ID.
 
@@ -79,7 +79,7 @@ MatchPath, not ChatGPT, is authoritative.
 ## Manual pilot operating steps
 
 1. Run the approved Noni search in ChatGPT.
-2. Download the 15-column MatchPath CSV.
+2. Download the 14-column MatchPath CSV.
 3. In MatchPath staff/admin workspace, select Noni.
 4. Upload the CSV.
 5. MatchPath validates the schema, supplies customer/run identity, and previews the batch.
@@ -89,7 +89,7 @@ MatchPath, not ChatGPT, is authoritative.
 
 ## Required acceptance tests
 
-A. The CSV has exactly 15 columns and no customer/run identity fields.
+A. The CSV has exactly 14 columns and no customer/run identity fields.
 B. The selected MatchPath workspace determines the customer.
 C. MatchPath generates a unique run ID.
 D. Two imports of the same posting create only one job.
@@ -101,4 +101,4 @@ I. Invalid/unverified URLs never become trusted new jobs.
 J. Audit history records the actor and time.
 
 ## Notes
-The current production backend still accepts customer and run identifiers as RPC parameters. The MatchPath UI now supplies those values before calling the RPC; ChatGPT no longer supplies them in the CSV.
+The current production backend still validates schema version and accepts customer/run identifiers. The MatchPath UI now supplies `schema_version=1.0`, customer identity and run identity before calling the RPC; ChatGPT no longer supplies any of those system fields in the CSV.
