@@ -4,7 +4,7 @@
  * Run importMatchPathCsv() from the editor, or install a menu with onOpen().
  * CSV is read from a private Google Drive CSV file ID; never expose as a public web app.
  */
-const MP_HEADERS = ['schema_version','customer_id','search_run_id','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const MP_HEADERS = ['schema_version','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const MP_JOB_HEADERS = ['job_key','search_run_id','discovered_at','employer','job_title','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','posting_verified_at','mandatory_status','fit_score','fit_evidence','concerns','status','approved_at','applied_at','application_confirmation','last_updated_at'];
 const MP_ALLOWED = ['Qualified','Not Qualified','Needs Verification'];
 function onOpen() {
@@ -44,11 +44,11 @@ function mpValidate_(text) {
   if(!rows.length||rows[0].join('|')!==MP_HEADERS.join('|'))throw Error('CSV header mismatch');
   const seen=new Set();
   return rows.slice(1).map((cells,index)=>{
-    if(cells.length!==17)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 17');
+    if(cells.length!==15)throw Error('Row '+(index+2)+' has '+cells.length+' columns, expected 15');
     const r=Object.fromEntries(MP_HEADERS.map((h,i)=>[h,cells[i]]));
-    if(r.schema_version!=='1.0'||r.customer_id!=='C001-NONI')throw Error('Unexpected schema/customer on row '+(index+2));
+    if(r.schema_version!=='1.0')throw Error('Unexpected schema version on row '+(index+2));
     if(!MP_ALLOWED.includes(r.qualification_status))throw Error('Invalid qualification on row '+(index+2));
-    if(!r.search_run_id||!r.job_title||!r.company||!r.searched_at||isNaN(Date.parse(r.searched_at)))throw Error('Missing required field on row '+(index+2));
+    if(!r.job_title||!r.company||!r.searched_at||isNaN(Date.parse(r.searched_at)))throw Error('Missing required field on row '+(index+2));
     if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||+r.fit_score>100))throw Error('Invalid score on row '+(index+2));
     const key=mpKey_(r.job_url);
     if(seen.has(key))throw Error('Duplicate job URL within incoming CSV: '+key);
@@ -57,7 +57,7 @@ function mpValidate_(text) {
 }
 function mpRead_(sheet) {return sheet.getDataRange().getValues();}
 function importMatchPathCsvText_(text) {
-  const incoming=mpValidate_(text);
+  const incoming=mpValidate_(text);\n  const runId='MP-C001-NONI-'+Utilities.formatDate(new Date(),'GMT',\"yyyyMMdd'T'HHmmss'Z'\")+'-'+Utilities.getUuid().slice(0,8);
   const lock=LockService.getDocumentLock();if(!lock.tryLock(30000))throw Error('Another import is running');
   try{
     const ss=SpreadsheetApp.getActiveSpreadsheet(),jobs=ss.getSheetByName('Jobs'),runs=ss.getSheetByName('Runs');
@@ -71,7 +71,7 @@ function importMatchPathCsvText_(text) {
       if(existing.has(key))throw Error('Duplicate key already in sheet: '+key);
       existing.set(key,{row:i+1,values:data[i]});
     }
-    const runRows=mpRead_(runs);const priorRuns=new Set(runRows.slice(1).map(r=>String(r[0])));
+    
     const updates=[],additions=[];let duplicate=0,held=0,excluded=0;
     const now=new Date().toISOString();
     incoming.forEach(r=>{
@@ -79,7 +79,7 @@ function importMatchPathCsvText_(text) {
       if(r.qualification_status==='Not Qualified'){excluded++;return;}
       const status=r.qualification_status==='Qualified'?'New':'Hold';
       if(status==='Hold')held++;
-      const record=[r.key,r.search_run_id,r.searched_at,r.company,r.job_title,'',r.location,r.work_arrangement,r.salary_min?Number(r.salary_min):'',r.salary_max?Number(r.salary_max):'',r.currency,r.job_url,r.source,'',r.qualification_status==='Qualified'?'Pass':'Hold',r.fit_score===''?'':Number(r.fit_score),r.fit_reason,r.concerns,status,'','','',now];
+      const record=[r.key,runId,r.searched_at,r.company,r.job_title,'',r.location,r.work_arrangement,r.salary_min?Number(r.salary_min):'',r.salary_max?Number(r.salary_max):'',r.currency,r.job_url,r.source,'',r.qualification_status==='Qualified'?'Pass':'Hold',r.fit_score===''?'':Number(r.fit_score),r.fit_reason,r.concerns,status,'','','',now];
       if(old){
         duplicate++;
         // Preserve all existing workflow and application fields; only refresh non-status descriptive fields.
@@ -91,9 +91,8 @@ function importMatchPathCsvText_(text) {
     // Write rows only after full CSV validation and duplicate checks.
     updates.forEach(x=>jobs.getRange(x.row,1,1,23).setValues([x.values]));
     if(additions.length)jobs.getRange(jobs.getLastRow()+1,1,additions.length,23).setValues(additions);
-    const runsSeen=new Set();
-    incoming.forEach(r=>{if(runsSeen.has(r.search_run_id)||priorRuns.has(r.search_run_id))return;runsSeen.add(r.search_run_id);runs.appendRow([r.search_run_id,r.searched_at,now,incoming.length,'',incoming.filter(x=>x.qualification_status==='Qualified').length,'',duplicate,'','CSV import; discovered/recommended counts require separate funnel report']);});
+    runs.appendRow([runId,incoming[0]?.searched_at||now,now,incoming.length,'',incoming.filter(x=>x.qualification_status==='Qualified').length,'',duplicate,'','CSV import; customer C001-NONI and run identity assigned by MatchPath importer']);
     SpreadsheetApp.flush();
-    return {received:incoming.length,inserted:additions.length,existing:duplicate,held,excluded,updated:updates.length,run_records_added:runsSeen.size};
+    return {received:incoming.length,inserted:additions.length,existing:duplicate,held,excluded,updated:updates.length,run_records_added:1,run_id:runId};
   }finally{lock.releaseLock();}
 }
