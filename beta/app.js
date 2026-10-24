@@ -383,7 +383,8 @@ async function validateCsvFile(file){
  if(!rows.length||rows.length>250)throw Error('CSV batch must contain 1–250 rows');
  rows.forEach((r,i)=>{
   if(!r.searched_at||!Number.isFinite(Date.parse(r.searched_at)))throw Error('Row '+(i+2)+': missing or invalid search timestamp');
-  if(!r.job_title.trim()||!r.company.trim()||!safeUrl(r.job_url))throw Error('Row '+(i+2)+': missing employer/title or invalid HTTPS job URL');\n  if((r.requisition_id||'').length>120)throw Error('Row '+(i+2)+': requisition ID is too long');
+  if(!r.job_title.trim()||!r.company.trim()||!safeUrl(r.job_url))throw Error('Row '+(i+2)+': missing employer/title or invalid HTTPS job URL');
+  if((r.requisition_id||'').length>120)throw Error('Row '+(i+2)+': requisition ID is too long');
   if(!['Qualified','Not Qualified','Needs Verification'].includes(r.qualification_status))throw Error('Row '+(i+2)+': invalid qualification status');
   if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||Number(r.fit_score)>100))throw Error('Row '+(i+2)+': invalid score');
  });
