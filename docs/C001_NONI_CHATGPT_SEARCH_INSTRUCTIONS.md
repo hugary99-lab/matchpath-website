@@ -198,7 +198,20 @@ Important:
 - Never reset an existing Approved, Preparing, Ready to Apply, Applied/Submitted, Skipped/Hold, or Blocked job to New.
 - Never mark a job Applied/Submitted unless a genuine employer submission has been confirmed.
 
-## 9. Required ChatGPT response
+## 9. Historical application prerequisite
+
+MatchPath can suppress previously applied jobs only when those historical application records have been loaded into the customer's MatchPath database.
+
+For C001-NONI, do not claim a backend-derived previously-applied exclusion count unless the MatchPath import response or live database check actually supplies that result.
+
+Until historical records are seeded:
+- ChatGPT may exclude an exact prior posting only when the current approved instruction/context explicitly identifies that employer + requisition/job posting;
+- do not exclude a different requisition merely because the employer or title is similar;
+- report the search funnel separately from MatchPath's later duplicate/applied import results.
+
+After the historical application load is complete, MatchPath becomes the authoritative source for prior-application suppression.
+
+## 10. Required ChatGPT response
 
 Return exactly three useful outputs:
 
@@ -224,7 +237,7 @@ For every CSV row, provide:
 - unresolved issues;
 - closing date if verified.
 
-## 10. Short reusable command
+## 11. Short reusable command
 
 When this instruction document is already available in context, the operator may use:
 
