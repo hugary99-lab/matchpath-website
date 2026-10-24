@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read = p => readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const jobs=['searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const jobs=['searched_at','job_title','company','requisition_id','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const docs=['schema_version','customer_id','application_id','resume_file','cover_letter_file'];
 test('CSV formats are frozen and correctly documented',()=>{
  assert.deepEqual(read('job_search_template.csv').split(/\r?\n/)[0].split(','),jobs);
@@ -26,12 +26,15 @@ test('security migration enables RLS and secures document buckets',()=>{
 test('search import metadata is owned by the backend, not the CSV',()=>{
  const app=read('beta/app.js');
  const sql=read('supabase/migrations/20261024_backend_owned_search_import.sql');
- assert.match(app,/MatchPath Standard v1\.0 \(14 exact columns\)/);
+ assert.match(app,/MatchPath Standard v1\.0 \(15 exact columns\)/);
  assert.match(app,/rpc\('import_search_results_v2'/);
  assert.doesNotMatch(app,/schema_version:'1\.0',customer_id:customer,search_run_id:/);
  assert.match(sql,/jsonb_build_object\(\s*'schema_version', '1\.0'/);
  assert.match(sql,/insert into public\.search_runs\(customer_id, external_id, created_by\)/);
  assert.match(sql,/grant execute on function public\.import_search_results_v2\(uuid,jsonb\) to authenticated/);
+ assert.match(sql,/add column if not exists requisition_id text/);
+ assert.match(sql,/jobs_customer_company_requisition_uidx/);
+ assert.match(sql,/private\.extract_requisition_id/);
 });
 test('public config contains only browser-safe Supabase connection values',()=>{
  const c=read('beta/config.js');
