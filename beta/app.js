@@ -101,34 +101,36 @@ function applicationsPage(){
 }
 function docButtons(app){return ['resume','cover_letter'].map(k=>{let d=appliedDocFor(app.id,k);return d?'<button class="btn outline small" data-action="download" data-doc="'+esc(d.id)+'">'+(k==='resume'?'Resume':'Cover letter')+' v'+d.version+' ↓</button>':'<span class="badge warn">'+(k==='resume'?'Resume':'Cover letter')+' pending</span>'}).join('')}
 function profilePage(){
- const p=currentProfile()||{};
+ const p=currentProfile()||{},id=currentCustomer(),operator=state.account?.role!=='customer';
  const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
  const objectives=String(p.career_goals||'').split('\n').filter(x=>x.startsWith('• ')).map(x=>x.slice(2));
  const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
  const cleanInstructions=String(p.search_instructions||'').replace(/^LinkedIn profile: https:\/\/[^\s]+\n?/m,'');
  const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
- return head('Customer onboarding','Build your career search','Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.')+
- '<section class="card"><form id="profileForm"><h2>1 · Your background</h2><p class="hint">Do not enter passwords or private LinkedIn access tokens. We will not scrape a private LinkedIn account.</p>'+
+ const headingExtra=operator?'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="navigate" data-page="import">← Back to Job Search</button></div>':'';
+ let html=head(operator?'Customer setup':'Customer onboarding',operator?customerName(id)+' · Profile & Search Preferences':'Build your career search',operator?'Update the selected customer\'s search profile and preferences used by MatchPath AI Job Search.':'Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.',headingExtra);
+ html+='<section class="card"><form id="profileForm"><h2>1 · Background</h2><p class="hint">Do not enter passwords or private LinkedIn access tokens. MatchPath uses only the public LinkedIn URL as profile context.</p>'+
  field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
- '<div class="field"><label for="referenceFiles">Upload reference resumes (PDF, multiple files)</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately; no automatic AI processing is triggered by saving.</span></div>'+
- '<div class="field"><strong>Uploaded reference resumes</strong><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div></div>'+'<h2>2 · Your next career move</h2><p class="hint">Select every goal that matters. Describe the most important tradeoffs below.</p>'+
- '<div class="field">'+objectiveOptions.map((o,i)=>'<label style="display:block;margin:9px 0"><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
+ (operator?'':'<div class="field"><label for="referenceFiles">Upload reference resumes (PDF, multiple files)</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately; no automatic AI processing is triggered by saving.</span></div><div class="field"><strong>Uploaded reference resumes</strong><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div></div>')+
+ '<h2>2 · Career direction</h2><p class="hint">Select every goal that matters and describe the most important tradeoffs.</p>'+
+ '<div class="field">'+objectiveOptions.map(o=>'<label style="display:block;margin:9px 0"><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
  area('career_goals_detail','Career destination, priorities and timeline',goalsFree,'Example: move from consulting into a permanent public-sector IT manager role within six months; pension matters more than a 10% salary increase.')+
  area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent or transferable roles',p.transferable_roles)+
  '<h2>3 · Search preferences and constraints</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+
  '<div class="form-row">'+field('salary_min','Minimum acceptable compensation',p.salary_min||'','number','min="0"')+'<div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+
  field('salary_target','Aspirational compensation target',p.salary_target||'','number','min="0" placeholder="Optional; describe in priorities if needed"')+
- '<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label for="service_tier">Service preference</label><select id="service_tier"><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — I apply</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
+ '<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+area('pension_preferences','Benefits and pension preferences',p.pension_preferences)+
  area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
- area('search_instructions','Flexible preferences and additional search instructions',cleanInstructions,'List nice-to-have preferences separately from hard exclusions.')+
+ area('search_instructions','Flexible preferences and additional search instructions',cleanInstructions,'These instructions are used by AI Job Search. Keep nice-to-have preferences separate from hard exclusions.')+
  '<div class="form-row">'+field('min_fit_score','Minimum fit score (0–100)',p.min_fit_score??90,'number','min="0" max="100" required')+'</div>'+
- '<p class="hint">Saving does not approve an AI-generated strategy or authorize application submissions. AI processing requires separate explicit consent.</p>'+
- '<div class="stack"><button class="btn" type="submit">Save onboarding information</button>'+(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download previous baseline resume</button>':'')+'</div></form></section>';
+ '<div class="stack"><button class="btn" type="submit">'+(operator?'Save Customer Profile':'Save onboarding information')+'</button>'+(operator?'<button class="btn outline" type="button" data-action="navigate" data-page="import">Back to Job Search</button>':(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download previous baseline resume</button>':''))+'</div></form></section>';
+ return html;
 }
 function importPage(){
  const id=currentCustomer(),p=currentProfile()||{};
- let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',customerPicker());
+ const extra=state.account.role==='customer'?'<button class="btn outline small" data-action="navigate" data-page="profile">View / Edit Search Profile</button>':'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="navigate" data-page="profile">View / Edit Customer Profile</button></div>';
+ let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',extra);
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  const hasInstructions=[p.target_roles,p.search_instructions,p.career_goals,p.preferred_locations,p.industries].some(v=>String(v||'').trim());
  html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??90)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
@@ -286,7 +288,7 @@ function render(){
   const allowed=isDiyCustomer()?['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','profile'];
   if(!allowed.includes(state.page))state.page='overview';
  }
- if(r!=='customer'&&!['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
+ if(r!=='customer'&&!['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents','profile',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
  const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,'queue-new':newResultsPage,'queue-approved':approvedResultsPage,'queue-submitted':submittedResultsPage,'queue-skipped':skippedResultsPage,'queue-all':allResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
  $('#page').innerHTML=pageMap[state.page]();
@@ -609,9 +611,14 @@ async function handleSubmit(form){
   const selected=[...document.querySelectorAll('input[name="career_objective"]:checked')].map(x=>'• '+x.value);
   const goals=[...selected,$('#career_goals_detail').value.trim()].filter(Boolean).join('\n');
   const target=$('#salary_target').value.trim();
-  const extra=[linked?'LinkedIn profile: '+linked:'',target?'Aspirational compensation target ('+$('#salary_currency').value+'): '+target:'',$('#search_instructions').value.trim()].filter(Boolean).join('\n');
-  // Save using existing deployed profile columns; expanded intake columns are added only after migration.
   const values={target_roles:$('#target_roles').value,career_goals:goals,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:$('#search_instructions').value,linkedin_url:linked,salary_target:target||null,service_tier:$('#service_tier').value,salary_currency:$('#salary_currency').value,transferable_roles:$('#transferable_roles').value,employment_types:$('#employment_types').value,industries:$('#industries').value,relocation_preferences:$('#relocation_preferences').value,pension_preferences:$('#pension_preferences').value,min_fit_score:score,updated_at:new Date().toISOString()};
+  const operator=state.account.role!=='customer';
+  if(operator){
+   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+   const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
+   if(error)throw error;
+   await loadData(state.me);state.page='import';render();notice('Customer profile and search preferences updated.');return;
+  }
   const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
   if(error)throw error;
   const files=[...($('#referenceFiles').files||[])];
