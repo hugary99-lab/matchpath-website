@@ -1,6 +1,63 @@
 -- MatchPath search import v2
 -- System-owned metadata: schema version, customer binding, and search-run identity.
--- The 14-column CSV contains only job-search data.
+-- Search CSV contains job-search facts only, including optional verified requisition_id.
+
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+
+alter table public.jobs
+  add column if not exists requisition_id text;
+
+create or replace function private.extract_requisition_id(p_explicit text, p_url text)
+returns text
+language plpgsql
+immutable
+security invoker
+set search_path=''
+as $$
+declare
+  v_explicit text := nullif(btrim(coalesce(p_explicit,'')), '');
+  v_url text := coalesce(p_url,'');
+  v_match text[];
+  v_value text;
+begin
+  if v_explicit is not null then
+    v_value := upper(regexp_replace(v_explicit, '[[:space:]]+', '', 'g'));
+    if length(v_value) between 2 and 120 then return v_value; end if;
+  end if;
+
+  v_match := regexp_match(
+    v_url,
+    '[?&](?:requisition(?:_?id)?|req(?:_?id)?|job(?:_?id)?|gh_jid)=([^&#]+)',
+    'i'
+  );
+  if v_match is not null then
+    v_value := upper(btrim(v_match[1]));
+    if length(v_value) between 2 and 120 then return v_value; end if;
+  end if;
+
+  v_match := regexp_match(
+    v_url,
+    '(?:^|[/_\\-])((?:JR|REQ|REQUISITION)[_\\-]?[0-9]{3,})(?:$|[/_.?&#\\-])',
+    'i'
+  );
+  if v_match is not null then
+    v_value := upper(regexp_replace(v_match[1], '[[:space:]]+', '', 'g'));
+    if length(v_value) between 2 and 120 then return v_value; end if;
+  end if;
+
+  return null;
+end;
+$$;
+
+drop index if exists public.jobs_customer_company_requisition_uidx;
+create unique index jobs_customer_company_requisition_uidx
+on public.jobs (
+  customer_id,
+  lower(regexp_replace(btrim(company), '[[:space:]]+', ' ', 'g')),
+  upper(regexp_replace(btrim(requisition_id), '[[:space:]]+', '', 'g'))
+)
+where requisition_id is not null and btrim(requisition_id) <> '';
 
 create or replace function public.import_search_results_v2(p_customer uuid, p_rows jsonb)
 returns jsonb
@@ -19,6 +76,7 @@ declare
   v_url text;
   v_title text;
   v_key text;
+  v_req text;
   v_score integer;
   v_qual text;
   v_timestamp timestamptz;
@@ -52,6 +110,7 @@ begin
     v_title := trim(coalesce(v_record->>'job_title', ''));
     v_url := trim(coalesce(v_record->>'job_url', ''));
     v_qual := coalesce(v_record->>'qualification_status', '');
+    v_req := private.extract_requisition_id(v_record->>'requisition_id', v_url);
 
     if v_company = ''
        or v_title = ''
@@ -86,15 +145,16 @@ begin
       lower(regexp_replace(split_part(split_part(v_url, '?', 1), '#', 1), '/$', ''));
 
     insert into public.jobs(
-      customer_id, search_run_id, canonical_key, job_title, company,
-      location, work_arrangement, salary_min, salary_max, currency,
-      job_url, source, fit_score, qualification_status, fit_reason,
+      customer_id, search_run_id, canonical_key, requisition_id,
+      job_title, company, location, work_arrangement, salary_min, salary_max,
+      currency, job_url, source, fit_score, qualification_status, fit_reason,
       concerns, searched_at
     )
     values(
       p_customer,
       v_run,
       v_key,
+      v_req,
       v_title,
       v_company,
       left(coalesce(v_record->>'location', ''), 240),
@@ -122,7 +182,7 @@ begin
       left(coalesce(v_record->>'concerns', ''), 3000),
       v_timestamp
     )
-    on conflict(customer_id, canonical_key) do nothing;
+    on conflict do nothing;
 
     if found then v_created := v_created + 1;
     else v_dupes := v_dupes + 1;
@@ -145,7 +205,8 @@ begin
       'external_run_id', v_external_id,
       'internal_run_id', v_run,
       'new', v_created,
-      'duplicates', v_dupes
+      'duplicates', v_dupes,
+      'requisition_dedupe', true
     )
   );
 
