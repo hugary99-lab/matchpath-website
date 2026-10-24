@@ -363,33 +363,46 @@ async function downloadAllCustomerDocuments(){
 }
 async function downloadSelectedResumes(jobIds){
  const selected=jobIds.map(id=>byId(state.jobs,id)).filter(Boolean);
- if(!selected.length)throw Error('Select at least one approved job.');
+ if(!selected.length){openDialog('No jobs selected','<p>Select at least one approved job first.</p>');return;}
  const {default:JSZip}=await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
- const zip=new JSZip(),manifest=['job_title,company,resume_status'];
+ const zip=new JSZip(),manifest=['job_title,company,document_type,status'];
  let ready=0,missing=0;
  for(const job of selected){
   const app=state.apps.find(a=>a.job_id===job.id&&a.status!=='closed');
-  const doc=app?docFor(app.id,'resume'):null;
   const safeName=(job.company+'_'+job.job_title).replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,120);
-  if(!app||!doc){missing++;manifest.push([job.job_title,job.company,'missing'].map(csvCell).join(','));continue;}
-  const url=config.supabaseUrl+'/storage/v1/object/authenticated/matchpath-documents/'+doc.storage_path.split('/').map(encodeURIComponent).join('/');
-  const response=await fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},signal:AbortSignal.timeout(30000)});
-  if(!response.ok)throw Error('Could not download resume for '+job.job_title+' (HTTP '+response.status+').');
-  const pdf=await response.blob();
-  if(pdf.size<4||!(await pdf.slice(0,4).text()).startsWith('%PDF'))throw Error('Invalid resume PDF for '+job.job_title);
-  zip.file(safeName+'_resume_v'+doc.version+'.pdf',pdf);ready++;
-  manifest.push([job.job_title,job.company,'included'].map(csvCell).join(','));
+  for(const kind of ['resume','cover_letter']){
+   const doc=app?docFor(app.id,kind):null;
+   if(!app||!doc){
+    missing++;
+    manifest.push([job.job_title,job.company,kind,'missing'].map(csvCell).join(','));
+    continue;
+   }
+   const url=config.supabaseUrl+'/storage/v1/object/authenticated/matchpath-documents/'+doc.storage_path.split('/').map(encodeURIComponent).join('/');
+   const response=await fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},signal:AbortSignal.timeout(30000)});
+   if(!response.ok)throw Error('Could not download '+kind.replace('_',' ')+' for '+job.job_title+' (HTTP '+response.status+').');
+   const pdf=await response.blob();
+   if(pdf.size<4||!(await pdf.slice(0,4).text()).startsWith('%PDF'))throw Error('Invalid PDF for '+job.job_title+' '+kind.replace('_',' '));
+   zip.file(safeName+'_'+kind+'_v'+doc.version+'.pdf',pdf);
+   ready++;
+   manifest.push([job.job_title,job.company,kind,'included'].map(csvCell).join(','));
+  }
  }
  if(!ready){
-  state.page='documents';render();
-  throw Error('None of the selected jobs has a tailored resume yet. MatchPath AI resume generation is not connected yet; use Documents to add the resumes.');
+  openDialog('No files available','<p>No AI resume or cover-letter files are available yet for the selected job'+(selected.length===1?'':'s')+'.</p>');
+  return;
  }
  zip.file('manifest.csv',manifest.join('\r\n'));
  const archive=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:4}});
  const link=document.createElement('a'),objectUrl=URL.createObjectURL(archive);
- link.href=objectUrl;link.download='MatchPath_selected_resumes.zip';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
- notice('Downloaded '+ready+' selected resume'+(ready===1?'':'s')+'.'+(missing?' '+missing+' selected job'+(missing===1?' needs':'s need')+' resume preparation.':''));
+ link.href=objectUrl;
+ link.download='MatchPath_selected_AI_documents.zip';
+ document.body.appendChild(link);
+ link.click();
+ link.remove();
+ setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
+ notice('Downloaded '+ready+' AI document'+(ready===1?'':'s')+'.'+(missing?' '+missing+' selected file'+(missing===1?' is':'s are')+' not available yet.':''));
 }
+
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
