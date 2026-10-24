@@ -111,9 +111,9 @@ function profilePage(){
 function importPage(){
  const id=currentCustomer();let html=head('Step 1 · Staff operations','Import a job-search batch','Download the standard CSV from ChatGPT, choose its customer, validate the file, and import once. The backend prevents duplicate job records.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
- html+='<div class="warning">The CSV must contain this customer’s UUID (<code>'+esc(id)+'</code>) and a unique search_run_id. Only genuine evaluated postings should be included.</div>';
+ html+='<div class="warning">The CSV contains job-search data only. MatchPath backend assigns schema version, customer identity, and search-run identity during import. Only genuine evaluated postings should be included.</div>';
  html+='<section class="card section"><h2>1. Choose the CSV</h2><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 14 columns · customer and run IDs are added by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
- if(state.csvPreview){const v=state.csvPreview;html+='<section class="card section"><h2>2. Validate and commit</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run '+esc(v.runId)+'</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>'}
+ if(state.csvPreview){const v=state.csvPreview;html+='<section class="card section"><h2>2. Validate and commit</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>'}
  return html;
 }
 function workbenchPage(){
@@ -245,9 +245,10 @@ async function handleClick(target){
   if(!state.csvPreview)throw Error('No validated CSV selected');
   const customer=currentCustomer();
   if(!customer)throw Error('Choose a customer workspace before importing.');
-  const rows=state.csvPreview.rows.map(r=>({...r,schema_version:'1.0',customer_id:customer,search_run_id:state.csvPreview.runId}));
-  const {data,error}=await state.sb.rpc('import_search_results',{p_customer:customer,p_run_id:state.csvPreview.runId,p_rows:rows});
-  if(error)throw error;state.csvPreview=null;await loadData();notice(data?.already_imported?'Search run was already imported; nothing duplicated.':data?.new_rows+' new jobs imported, '+data?.duplicate_rows+' duplicates skipped.');return;
+  const {data,error}=await state.sb.rpc('import_search_results_v2',{p_customer:customer,p_rows:state.csvPreview.rows});
+  if(error)throw error;
+  const runId=data?.search_run_id||'assigned';
+  state.csvPreview=null;await loadData();notice(data?.new_rows+' new jobs imported, '+data?.duplicate_rows+' duplicates skipped. Run '+runId+'.');return;
  }
  if(action==='status'){
   const {error}=await state.sb.rpc('staff_set_application_status',{p_application:target.dataset.app,p_status:target.dataset.status,p_reference:null,p_note:''});
@@ -386,8 +387,7 @@ async function validateCsvFile(file){
   if(!['Qualified','Not Qualified','Needs Verification'].includes(r.qualification_status))throw Error('Row '+(i+2)+': invalid qualification status');
   if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||Number(r.fit_score)>100))throw Error('Row '+(i+2)+': invalid score');
  });
- const run='MP-'+new Date().toISOString().replace(/[-:.]/g,'')+'-'+crypto.randomUUID().slice(0,8);
- state.csvPreview={runId:run,rows};render();notice('CSV passed format checks. MatchPath assigned this file to the selected customer and generated a search run ID. Review and click Import validated batch.');
+ state.csvPreview={rows};render();notice('CSV passed format checks. The MatchPath backend will assign schema, customer, and run metadata when you import.');
 }
 async function validatePdf(file){
  if(!file||file.size<10||file.size>6*1024*1024)throw Error('PDF must be 10 bytes–6 MB');
