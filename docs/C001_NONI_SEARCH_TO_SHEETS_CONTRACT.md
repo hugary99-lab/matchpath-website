@@ -1,52 +1,104 @@
-# MatchPath C001 — Repeatable search-to-Sheets contract (2026-10-15)
+# MatchPath C001 — Repeatable search-to-import contract (updated 2026-10-24)
 
-**Status:** Search instructions and import mapping, not a live automatic connection to a different ChatGPT conversation. Existing chat: **Noni Noni Job Search**. Target: https://docs.google.com/spreadsheets/d/1wOhnn2b-mnLQ7Ga9gs7qKXCeorg4PghkrSY0TOKqk3I/edit
+**Status:** Manual pilot contract for ChatGPT search export -> MatchPath import. Customer identity, run identity, deduplication and application history are owned by MatchPath, not by the AI-generated CSV.
 
-## Copy into the existing search chat (once)
-You are the MatchPath search operator for customer C001-NONI. At each request to **Run MatchPath search**, use the approved profile and prior-application list already in this conversation. Search Toronto/GTA first, Ontario second; prioritize permanent finance/accounting/FP&A/budgeting/financial analyst/business officer roles, especially public employers and verified defined-benefit pensions. Exclude contracts/temporary roles and previously applied *exact requisitions*. Do not assume a salary minimum or a work-mode restriction that the customer has not confirmed. Verify current job-specific employer/ATS URLs and evidence of posting status. Do not invent openings, salaries, fit evidence, requisition IDs, dates or experience.
+## ChatGPT search instruction
+You are the MatchPath search operator for Noni Noni. Use the approved Noni search profile and verified resume evidence. Search Toronto/GTA first, Ontario second; prioritize permanent finance/accounting/FP&A/budgeting/financial analyst/business officer roles, especially public employers and verified defined-benefit pensions. Exclude temporary/contract roles. Do not invent openings, salaries, fit evidence, requisition IDs, dates, pension details, credentials or experience.
+
+Search current employer career sites and official applicant-tracking systems. Verify current job-specific URLs and whether each position is still accepting applications. Apply mandatory filters before scoring. Use `Needs Verification` when a material mandatory requirement cannot be verified.
+
+ChatGPT is **not** the system of record for duplicates or previous applications. MatchPath performs those checks at import time against the selected customer's database records.
 
 For each run, output:
-1. A brief funnel summary: discovered, duplicates, rejected mandatory, needs verification, qualified, recommended.
-2. A machine-readable UTF-8 CSV block with EXACTLY the 17-column header from `job_search_template.csv` below, in that order. CSV quoting must be RFC 4180 compliant. Use a unique `search_run_id` and offset-aware ISO timestamp. `customer_id` is the **pilot alias C001-NONI**, not a Supabase UUID. Set `qualification_status` only to Qualified, Not Qualified, or Needs Verification. `fit_score` is an integer 0–100 or blank when unsupported. Do not mark Qualified if mandatory information is missing.
-3. A verification note per recommendation, with source link and unresolved issues. Do not place sensitive resume details into the CSV.
+1. A brief search funnel: discovered, rejected mandatory, needs verification, qualified, recommended.
+2. A machine-readable UTF-8 CSV with EXACTLY the 15-column header below, in order. CSV quoting must be RFC 4180 compliant.
+3. Verification notes with source links and unresolved issues.
 
-Header:
+## MatchPath Standard v1.0 CSV
+
 ```csv
-schema_version,customer_id,search_run_id,searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
+schema_version,searched_at,job_title,company,location,work_arrangement,salary_min,salary_max,currency,job_url,source,fit_score,qualification_status,fit_reason,concerns
 ```
-Every row must have `schema_version=1.0`. Only genuinely verified postings should enter the customer recommendation queue. If none qualify, output the header with no rows and report zero recommendations.
 
-## Google Sheet mapping (17-column CSV -> 23-column Jobs tab)
-- job_key: canonical job URL (or employer + requisition ID if verified). **Never a row number**.
-- search_run_id <- search_run_id
-- discovered_at <- searched_at
-- employer <- company
-- job_title <- job_title
-- requisition_id <- verified posting ID, otherwise blank
-- location <- location
-- work_arrangement <- work_arrangement
+Rules:
+- `schema_version` must be `1.0`.
+- `searched_at` must be an offset-aware ISO 8601 timestamp.
+- `job_url` should be the direct official employer/ATS job-specific URL whenever available.
+- `fit_score` is an integer 0-100 or blank when unsupported.
+- `qualification_status` is only `Qualified`, `Not Qualified`, or `Needs Verification`.
+- Do not include personal contact details or resume text in the CSV.
+- If no jobs qualify for import, output the header only.
+
+## Identity ownership
+
+The CSV intentionally does **not** contain:
+- `customer_id`
+- `search_run_id`
+
+At upload time MatchPath:
+1. takes the customer from the currently selected authenticated workspace;
+2. generates a unique external search-run ID;
+3. passes both values to the backend import RPC;
+4. attaches the generated values to each row before database validation.
+
+This prevents ChatGPT from assigning a result to the wrong customer or reusing a stale run ID.
+
+## MatchPath import mapping
+
+- internal customer_id <- selected MatchPath customer workspace
+- internal search_run_id <- MatchPath-created search run
+- discovered/searched time <- `searched_at`
+- job_title <- `job_title`
+- company <- `company`
+- location <- `location`
+- work_arrangement <- `work_arrangement`
 - salary_min/max/currency <- corresponding CSV values
-- job_url <- job_url
-- source <- source
-- posting_verified_at <- actual staff verification timestamp, not automatically the search time
-- mandatory_status <- qualification_status mapped Qualified→Pass, Not Qualified→Fail, Needs Verification→Hold; this is provisional pending deterministic recheck
-- fit_score <- fit_score
-- fit_evidence <- fit_reason
-- concerns <- concerns
-- status: NEW qualified verified jobs -> New; unverified -> Hold; rejected -> omit from customer queue or retain as Blocked according to staff policy.
-- approved_at, applied_at, application_confirmation, last_updated_at: backend-owned; never supplied by AI.
+- job_url <- `job_url`
+- source <- `source`
+- fit_score <- `fit_score`
+- qualification_status <- `qualification_status`
+- fit_reason <- `fit_reason`
+- concerns <- `concerns`
 
-**Update behavior:** Deduplicate by canonical URL / verified requisition. Existing status and application fields are immutable to the importer. Never downgrade Approved, Preparing, Ready to Apply, Applied, Skipped or Blocked. Preserve status history. Flag materially changed posting for staff review.
+## Authoritative deduplication and status rules
 
-## Pilot operating steps
-1. Staff triggers **Run MatchPath search** in Noni's existing chat.
-2. Staff checks URLs, exclusions, exact requisitions and hard filters. Record verification timestamp.
-3. Export CSV and validate header, customer alias, URL, duplicate key, allowed qualifications, score range and date.
-4. Map and upsert into the Google Sheet through an authorized backend or reviewed staff import; no public browser credentials.
-5. Update Runs counts; append StatusHistory for status transitions. Customer app reads through authenticated backend. **No direct live Sheets/app sync has yet been deployed.**
+MatchPath, not ChatGPT, is authoritative.
+
+1. Normalize job URLs and remove tracking parameters.
+2. Build a canonical job key.
+3. Extract an employer requisition/job ID when reliably available.
+4. Check the selected customer's existing jobs/applications.
+5. Prefer exact employer + requisition ID when available, then canonical URL/key.
+6. Treat employer + normalized title + location only as a review fallback, not an automatic duplicate rule.
+7. Preserve existing workflow/application state. Never reset an existing Approved, Preparing, Ready to Apply, Applied/Submitted, Skipped/Hold or Blocked job to New.
+8. New verified Qualified jobs may enter the review queue.
+9. Needs Verification jobs must remain held for review.
+10. Never mark a job Applied/Submitted without genuine submission confirmation.
+11. Record duplicate and previously-applied outcomes in the run/audit history.
+
+## Manual pilot operating steps
+
+1. Run the approved Noni search in ChatGPT.
+2. Download the 15-column MatchPath CSV.
+3. In MatchPath staff/admin workspace, select Noni.
+4. Upload the CSV.
+5. MatchPath validates the schema, supplies customer/run identity, and previews the batch.
+6. Commit the import.
+7. Backend deduplicates against Noni's existing jobs and applications and preserves existing states.
+8. Review the run counts and any held results.
 
 ## Required acceptance tests
-A: two imports of the same posting create one job; B: Approved survives re-import; C: Applied survives re-import; D: previously applied exact requisition is suppressed; E: missing mandatory detail -> Hold; F: customer A cannot read/write customer B; G: unverified URL never becomes New; H: no invented UUID; I: changed posting flags staff review; J: audit log records actor/time.
+
+A. The CSV has exactly 15 columns and no customer/run identity fields.
+B. The selected MatchPath workspace determines the customer.
+C. MatchPath generates a unique run ID.
+D. Two imports of the same posting create only one job.
+E. Existing Approved/Preparing/Ready/Submitted states survive re-import.
+F. Previously applied exact requisitions are not surfaced as new.
+G. Missing mandatory detail is held for verification.
+H. Cross-customer reads/writes are denied.
+I. Invalid/unverified URLs never become trusted new jobs.
+J. Audit history records the actor and time.
 
 ## Notes
-The pilot alias is not a valid Supabase UUID. Convert to an actual customer UUID only after a dedicated backend and authenticated account are configured. Do not put real resume contents in this public repository. ChatGPT chat instructions cannot be edited remotely by a GitHub commit; paste the instruction section into the existing chat to activate it.
+The current production backend still accepts customer and run identifiers as RPC parameters. The MatchPath UI now supplies those values before calling the RPC; ChatGPT no longer supplies them in the CSV.
