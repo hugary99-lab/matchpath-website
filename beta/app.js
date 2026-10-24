@@ -746,7 +746,7 @@ async function handleSubmit(form){
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
    const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
    if(error)throw error;
-   await loadData(state.me);state.page='import';render();notice('Customer profile and search preferences updated.');return;
+   await loadData(state.me);state.page='profile';render();notice('Customer profile and search preferences saved.');return;
   }
   const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
   if(error)throw error;
