@@ -23,8 +23,15 @@ test('security migration enables RLS and secures document buckets',()=>{
  assert.match(sql,/values\('matchpath-documents','matchpath-documents',false/);
  assert.match(sql,/values\('matchpath-profiles','matchpath-profiles',false/);
 });
-test('public config does not contain database credentials',()=>{
+test('search import identity is owned by MatchPath, not the CSV',()=>{
+ const app=read('beta/app.js');
+ assert.match(app,/MatchPath Standard v1\.0 \(15 exact columns\)/);
+ assert.match(app,/customer_id:customer,search_run_id:state\.csvPreview\.runId/);
+ assert.match(app,/const run='MP-'/);
+});
+test('public config contains only browser-safe Supabase connection values',()=>{
  const c=read('beta/config.js');
- assert.match(c,/supabaseUrl:\s*""/);assert.match(c,/supabasePublishableKey:\s*""/);
+ assert.match(c,/supabaseUrl:\s*"https:\/\/[^"]+\.supabase\.co"/);
+ assert.match(c,/supabasePublishableKey:\s*"sb_publishable_[^"]+"/);
  assert.doesNotMatch(c,/(service_role|sb_secret_)/);
 });
