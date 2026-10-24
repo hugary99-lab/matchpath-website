@@ -14,6 +14,7 @@ const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
 const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{}};
+let resultSearchTimer=null;
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -121,6 +122,10 @@ function jobResultUiStatus(j){
  if(app?.status==='submitted')return 'applied';
  return j.review_status==='pending'?'new':j.review_status;
 }
+function resultFilterControls(forcedStatus,shown,total){
+ const hasFilters=!!state.resultSearch.trim()||state.resultQualificationFilter!=='all'||(forcedStatus==='all'&&state.resultStatusFilter!=='all');
+ return '<section class="card section"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div>'+(forcedStatus==='all'?'<div class="field"><label for="resultStatusFilter">Status</label><select id="resultStatusFilter"><option value="all">All statuses</option>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(state.resultStatusFilter===v?'selected':'')+'>'+n+'</option>').join('')+'</select></div>':'')+'<div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack">'+(hasFilters?'<button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button>':'')+'<span class="hint">'+shown+' of '+total+' jobs shown</span></div></section>';
+}
 function jobResultsPanel(forcedStatus='all'){
  const id=currentCustomer(),allRows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  if(!id)return '<div class="card section empty">No customer assigned.</div>';
@@ -129,8 +134,8 @@ function jobResultsPanel(forcedStatus='all'){
  const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':s==='applied'?'Submitted':'Rejected';
  const search=state.resultSearch.trim().toLowerCase();
  const activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
- const rows=allRows.filter(j=>{
-   if(activeStatus!=='all'&&jobResultUiStatus(j)!==activeStatus)return false;
+ const baseRows=allRows.filter(j=>activeStatus==='all'||jobResultUiStatus(j)===activeStatus);
+ const rows=baseRows.filter(j=>{
    if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
    if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
    return true;
@@ -146,9 +151,7 @@ function jobResultsPanel(forcedStatus='all'){
 
  let html='<section class="section">';
  html+='<div class="stack section-head"><span class="badge neutral">'+counts.new+' To review</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
-
- html+='<section class="card"><form id="resultFilterForm"><input type="hidden" id="forcedResultStatus" value="'+esc(forcedStatus)+'"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div>'+(forcedStatus==='all'?'<div class="field"><label for="resultStatusFilter">Status</label><select id="resultStatusFilter"><option value="all">All statuses</option>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(state.resultStatusFilter===v?'selected':'')+'>'+n+'</option>').join('')+'</select></div>':'')+'<div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown</span></div></form></section>';
-
+ html+=resultFilterControls(forcedStatus,rows.length,baseRows.length);
  html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Employer / role</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
    const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
    const current=jobResultUiStatus(j);
@@ -177,9 +180,9 @@ function newReviewTriagePage(){
    if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
    return true;
  });
- html+='<section class="card section"><div class="space"><div><strong>Review decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):'No unsaved changes')+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>Save Changes</button></div></section>';
- html+='<section class="card"><form id="resultFilterForm"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div><div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown</span></div></form></section>';
- html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>To Be Reviewed</th><th>Approved</th><th>Skipped</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
+ html+=resultFilterControls('new',rows.length,allRows.length);
+ html+='<div class="space section section-head"><div><strong>Review decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):'No unsaved changes')+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>Save Changes</button></div>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>To Be Reviewed</th><th>Approved</th><th>Skipped</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
    const draft=state.reviewDrafts[j.id]||'new';
    const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
    const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
@@ -402,13 +405,7 @@ async function handleClick(target){
 }
 async function handleSubmit(form){
  const type=form.id;
- if(type==='resultFilterForm'){
-  state.resultSearch=$('#resultSearch')?.value||'';
-  if($('#resultStatusFilter'))state.resultStatusFilter=$('#resultStatusFilter').value||'all';
-  state.resultQualificationFilter=$('#resultQualificationFilter')?.value||'all';
-  render();
-  return;
- }
+
  if(type==='inviteAccountForm'){
   if(state.account?.role!=='admin')throw Error('Administrator access required.');
   const response=await fetch(config.supabaseUrl+'/functions/v1/admin-invite-account',{method:'POST',headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},body:JSON.stringify({full_name:$('#inviteName').value.trim(),email:$('#inviteEmail').value.trim(),role:$('#inviteRole').value}),signal:AbortSignal.timeout(15000)});
@@ -585,8 +582,29 @@ document.addEventListener('submit',async e=>{
  if(state.loading)return;state.loading=true;form.classList.add('loading');
  try{await handleSubmit(form)}catch(err){notice(errorMsg(err),true)}finally{state.loading=false;form.classList.remove('loading')}
 });
+document.addEventListener('input',e=>{
+ if(e.target.id!=='resultSearch')return;
+ state.resultSearch=e.target.value;
+ const cursor=e.target.selectionStart??state.resultSearch.length;
+ clearTimeout(resultSearchTimer);
+ resultSearchTimer=setTimeout(()=>{
+  render();
+  const input=$('#resultSearch');
+  if(input){input.focus();const pos=Math.min(cursor,input.value.length);input.setSelectionRange(pos,pos);}
+ },180);
+});
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.id==='resultQualificationFilter'){
+   state.resultQualificationFilter=e.target.value||'all';
+   render();
+   return;
+  }
+  if(e.target.id==='resultStatusFilter'){
+   state.resultStatusFilter=e.target.value||'all';
+   render();
+   return;
+  }
   if(e.target.matches('[data-review-choice]')){
    const job=e.target.dataset.job,status=e.target.value;
    if(status==='new')delete state.reviewDrafts[job];
