@@ -738,6 +738,9 @@ document.addEventListener('change',async e=>{
   if(e.target.matches('[data-approved-status]')){
    const job=e.target.dataset.job,status=e.target.value;
    if(status==='approved')delete state.approvedStatusDrafts[job];else state.approvedStatusDrafts[job]=status;
+   state.approvedSelections[job]=true;
+   const box=document.querySelector('[data-approved-select][data-job="'+CSS.escape(job)+'"]');if(box)box.checked=true;
+   updateApprovedBulkState();
    return;
   }
   if(e.target.matches('[data-review-choice]')){
