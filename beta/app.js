@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:''};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{}};
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -161,10 +161,36 @@ function jobResultsPanel(forcedStatus='all'){
  }).join('')+'</tbody></table></div></section></section>';
  return html;
 }
+function reviewDraftCount(){return Object.keys(state.reviewDrafts||{}).length}
+function updateReviewSaveState(){
+ const count=reviewDraftCount(),button=$('#saveReviewDecisions'),label=$('#reviewChangeCount');
+ if(button)button.disabled=count===0;
+ if(label)label.textContent=count===0?'No unsaved changes':count+' unsaved change'+(count===1?'':'s');
+}
+function newReviewTriagePage(){
+ const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='new').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+ let html=head('Staff operations','To be reviewed','Review new search results. Each job starts as To Be Reviewed. Change only the rows you want to Approve or Skip, then save all decisions together.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ const search=state.resultSearch.trim().toLowerCase();
+ const rows=allRows.filter(j=>{
+   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
+   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
+   return true;
+ });
+ html+='<section class="card section"><div class="space"><div><strong>Review decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):'No unsaved changes')+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>Save Changes</button></div></section>';
+ html+='<section class="card"><form id="resultFilterForm"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div><div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown</span></div></form></section>';
+ html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>To Be Reviewed</th><th>Approved</th><th>Skipped</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
+   const draft=state.reviewDrafts[j.id]||'new';
+   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+   const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
+   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(salary)+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="new" '+(draft==='new'?'checked':'')+' aria-label="Keep To Be Reviewed"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="approved" '+(draft==='approved'?'checked':'')+' aria-label="Approve"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="skipped" '+(draft==='skipped'?'checked':'')+' aria-label="Skip"></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a></td></tr>';
+ }).join('')+'</tbody></table></div></section>';
+ return html;
+}
 function queuePage(status,title,description){
  return head('Staff operations',title,description,customerPicker())+jobResultsPanel(status);
 }
-function newResultsPage(){return queuePage('new','To be reviewed','New imported search results waiting for Admin review and disposition.');}
+function newResultsPage(){return newReviewTriagePage();}
 function approvedResultsPage(){return queuePage('approved','Approved search results','Jobs authorized for application preparation but not yet submitted.');}
 function submittedResultsPage(){return queuePage('applied','Submitted','Applications confirmed as submitted to the employer.');}
 function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs intentionally retained but not currently being pursued.');}
@@ -294,6 +320,20 @@ async function handleClick(target){
   if(!confirm('Record this job as '+target.dataset.decision+'?'))return;
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
   if(error)throw error;await loadData();notice('Your decision has been recorded.');return;
+ }
+ if(action==='save-review-decisions'){
+  if(state.account?.role!=='admin')throw Error('Administrator access required.');
+  const updates=Object.entries(state.reviewDrafts||{}).filter(([,status])=>status==='approved'||status==='skipped').map(([job_id,status])=>({job_id,status}));
+  if(!updates.length){notice('No review decisions to save.');return;}
+  if(!confirm('Save '+updates.length+' review decision'+(updates.length===1?'':'s')+'? Approved jobs will move to Approved; skipped jobs will move to Skipped.'))return;
+  const {data,error}=await state.sb.rpc('admin_apply_job_review_decisions',{p_updates:updates});
+  if(error)throw error;
+  state.reviewDrafts={};
+  await loadData(state.me);
+  state.page='queue-new';
+  render();
+  notice((data?.updated||updates.length)+' review decision'+((data?.updated||updates.length)===1?'':'s')+' saved. Unchanged jobs remain To be reviewed.');
+  return;
  }
  if(action==='save-job-status'){
   if(state.account?.role!=='admin')throw Error('Administrator access required.');
@@ -547,13 +587,20 @@ document.addEventListener('submit',async e=>{
 });
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.matches('[data-review-choice]')){
+   const job=e.target.dataset.job,status=e.target.value;
+   if(status==='new')delete state.reviewDrafts[job];
+   else state.reviewDrafts[job]=status;
+   updateReviewSaveState();
+   return;
+  }
   if(e.target.id==='workspaceSwitch'&&state.account?.role==='admin'){
-   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;render();return;
+   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;state.reviewDrafts={};render();return;
   }
   if(e.target.id==='previewStaffSelect'&&state.account?.role==='admin'){
-   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;render();return;
+   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;state.reviewDrafts={};render();return;
   }
-  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;render();return}
+  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;state.reviewDrafts={};render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
   if(e.target.dataset.change==='assign'){
