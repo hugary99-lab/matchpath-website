@@ -23,11 +23,15 @@ test('security migration enables RLS and secures document buckets',()=>{
  assert.match(sql,/values\('matchpath-documents','matchpath-documents',false/);
  assert.match(sql,/values\('matchpath-profiles','matchpath-profiles',false/);
 });
-test('search import identity is owned by MatchPath, not the CSV',()=>{
+test('search import metadata is owned by the backend, not the CSV',()=>{
  const app=read('beta/app.js');
+ const sql=read('supabase/migrations/20261024_backend_owned_search_import.sql');
  assert.match(app,/MatchPath Standard v1\.0 \(14 exact columns\)/);
- assert.match(app,/schema_version:'1\.0',customer_id:customer,search_run_id:state\.csvPreview\.runId/);
- assert.match(app,/const run='MP-'/);
+ assert.match(app,/rpc\('import_search_results_v2'/);
+ assert.doesNotMatch(app,/schema_version:'1\.0',customer_id:customer,search_run_id:/);
+ assert.match(sql,/jsonb_build_object\(\s*'schema_version', '1\.0'/);
+ assert.match(sql,/insert into public\.search_runs\(customer_id, external_id, created_by\)/);
+ assert.match(sql,/grant execute on function public\.import_search_results_v2\(uuid,jsonb\) to authenticated/);
 });
 test('public config contains only browser-safe Supabase connection values',()=>{
  const c=read('beta/config.js');
