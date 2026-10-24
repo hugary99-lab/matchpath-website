@@ -222,5 +222,6 @@ begin
 end;
 $$;
 
+revoke execute on function public.import_search_results(uuid,text,jsonb) from public, anon, authenticated;
 revoke execute on function public.import_search_results_v2(uuid,jsonb) from public, anon;
 grant execute on function public.import_search_results_v2(uuid,jsonb) to authenticated;
