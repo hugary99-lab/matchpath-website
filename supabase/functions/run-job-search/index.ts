@@ -23,13 +23,6 @@ Deno.serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const openaiKey = Deno.env.get("OPENAI_API_KEY");
-    if (!openaiKey) {
-      return respond({
-        error: "OpenAI search is not configured yet. Add OPENAI_API_KEY to Supabase Edge Function secrets."
-      }, 503);
-    }
-
     const admin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
@@ -179,6 +172,13 @@ Deno.serve(async (req: Request) => {
         suppress_count: suppress.length,
         model: Deno.env.get("OPENAI_SEARCH_MODEL") || "gpt-6.1-sol",
       });
+    }
+
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (!openaiKey) {
+      return respond({
+        error: "OpenAI search is not configured yet. Add OPENAI_API_KEY to Supabase Edge Function secrets."
+      }, 503);
     }
 
     const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
