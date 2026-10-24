@@ -261,7 +261,6 @@ revoke execute on function public.operator_apply_job_review_decisions(jsonb) fro
 revoke execute on function public.operator_bulk_set_job_statuses(jsonb) from public,anon;
 revoke execute on function public.operator_bulk_mark_submitted(jsonb) from public,anon;
 
-grant execute on function public.can_operate_customer(uuid) to authenticated;
 grant execute on function public.operator_set_job_review_status(uuid,text) to authenticated;
 grant execute on function public.operator_apply_job_review_decisions(jsonb) to authenticated;
 grant execute on function public.operator_bulk_set_job_statuses(jsonb) to authenticated;
