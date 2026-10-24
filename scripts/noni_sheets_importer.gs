@@ -61,7 +61,9 @@ function mpValidate_(text) {
     if(!MP_ALLOWED.includes(r.qualification_status))throw Error('Invalid qualification on row '+(index+2));
     if(!r.job_title||!r.company||!r.searched_at||isNaN(Date.parse(r.searched_at)))throw Error('Missing required field on row '+(index+2));
     if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||+r.fit_score>100))throw Error('Invalid score on row '+(index+2));
-    const key=mpKey_(r.job_url);\n    r.requisition_id=mpReq_(r.requisition_id,r.job_url);\n    r.reqKey=mpReqKey_(r.company,r.requisition_id);
+    const key=mpKey_(r.job_url);
+    r.requisition_id=mpReq_(r.requisition_id,r.job_url);
+    r.reqKey=mpReqKey_(r.company,r.requisition_id);
     if(seen.has(key))throw Error('Duplicate job URL within incoming CSV: '+key);
     seen.add(key);r.key=key;return r;
   });
@@ -81,7 +83,10 @@ function importMatchPathCsvText_(text) {
       if(!data[i][0])continue;
       const key=mpKey_(String(data[i][11]||data[i][0]));
       if(existing.has(key))throw Error('Duplicate key already in sheet: '+key);
-      const item={row:i+1,values:data[i]};\n      existing.set(key,item);\n      const reqKey=mpReqKey_(String(data[i][3]||''),String(data[i][5]||''));\n      if(reqKey){if(existingReq.has(reqKey))throw Error('Duplicate requisition already in sheet: '+reqKey);existingReq.set(reqKey,item);}
+      const item={row:i+1,values:data[i]};
+      existing.set(key,item);
+      const reqKey=mpReqKey_(String(data[i][3]||''),String(data[i][5]||''));
+      if(reqKey){if(existingReq.has(reqKey))throw Error('Duplicate requisition already in sheet: '+reqKey);existingReq.set(reqKey,item);}
     }
     
     const updates=[],additions=[];let duplicate=0,held=0,excluded=0;
