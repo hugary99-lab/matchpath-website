@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const read = p => readFileSync(new URL('../'+p,import.meta.url),'utf8');
-const jobs=['schema_version','customer_id','search_run_id','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const jobs=['schema_version','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const docs=['schema_version','customer_id','application_id','resume_file','cover_letter_file'];
 test('CSV formats are frozen and correctly documented',()=>{
  assert.deepEqual(read('job_search_template.csv').split(/\r?\n/)[0].split(','),jobs);
