@@ -117,7 +117,7 @@ function profilePage(){
  '<section class="card profile-panel"><h2>Career priorities</h2><div class="profile-objectives">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+area('career_goals_detail','Career destination, priorities and timeline',goalsFree)+'</section>'+
  '<section class="card profile-panel"><h2>AI search controls</h2>'+field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+area('search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+'<div class="form-row">'+field('min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+'<div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div></section>'+
  (!operator?'<section class="card profile-panel profile-span"><h2>Reference resumes</h2><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately.</span></div><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div></section>':'')+
- '</div><section class="profile-actions"><div><strong>AI prompt preview uses the saved profile.</strong><span class="hint"> Save changes first if you want the prompt preview to reflect edits on this page.</span></div><div class="stack"><button class="btn" type="submit">'+(operator?'Save Customer Profile':'Save Profile')+'</button><button class="btn outline" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'+(operator?'<button class="btn ghost" type="button" data-action="navigate" data-page="import">Back to Job Search</button>':'')+'</div></section></form>';
+ '</div><section class="profile-actions"><div><strong>AI prompt is generated from the saved profile.</strong><span class="hint"> Use Update AI Search Prompt to save the current edits and immediately rebuild the prompt.</span></div><div class="stack"><button class="btn" type="submit">'+(operator?'Save Customer Profile':'Save Profile')+'</button>'+(operator?'<button class="btn outline" type="button" data-action="update-ai-prompt">Update AI Search Prompt</button>':'')+'<button class="btn ghost" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'+(operator?'<button class="btn ghost" type="button" data-action="navigate" data-page="import">Back to Job Search</button>':'')+'</div></section></form>';
  return html;
 }
 function importPage(){
@@ -332,6 +332,48 @@ const refresh=async()=>{try{await loadData();}catch(e){notice(errorMsg(e),true)}
 function errorMsg(e){return e?.message || String(e || 'Unknown error')}
 function openDialog(title,body,wide=false){$('#dialogTitle').textContent=title;$('#dialogBody').innerHTML=body;$('#dialog .modal')?.classList.toggle('wide',wide);$('#dialog').classList.remove('hidden')}
 function closeDialog(){$('#dialog').classList.add('hidden');$('#dialog .modal')?.classList.remove('wide');$('#dialogBody').replaceChildren()}
+function profileFormValues(){
+ const score=Number($('#min_fit_score').value);
+ if(!Number.isInteger(score)||score<0||score>100)throw Error('Fit score must be between 0 and 100');
+ const linked=$('#linkedin_url').value.trim();
+ if(linked&&!/^https:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_%.-]+\/?(?:\?.*)?$/.test(linked))throw Error('Enter a valid public LinkedIn profile URL (linkedin.com/in/...).');
+ const selected=[...document.querySelectorAll('input[name="career_objective"]:checked')].map(x=>'• '+x.value);
+ const goals=[...selected,$('#career_goals_detail').value.trim()].filter(Boolean).join('\n');
+ const target=$('#salary_target').value.trim();
+ return {
+  target_roles:$('#target_roles').value,
+  career_goals:goals,
+  preferred_locations:$('#preferred_locations').value,
+  salary_min:$('#salary_min').value||null,
+  work_preference:$('#work_preference').value,
+  exclusions:$('#exclusions').value,
+  search_instructions:$('#search_instructions').value,
+  linkedin_url:linked,
+  salary_target:target||null,
+  service_tier:$('#service_tier').value,
+  salary_currency:$('#salary_currency').value,
+  transferable_roles:$('#transferable_roles').value,
+  employment_types:$('#employment_types').value,
+  industries:$('#industries').value,
+  relocation_preferences:$('#relocation_preferences').value,
+  pension_preferences:$('#pension_preferences').value,
+  min_fit_score:score,
+  updated_at:new Date().toISOString()
+ };
+}
+async function showAiPromptPreview(customer){
+ const response=await fetch(config.supabaseUrl+'/functions/v1/run-job-search',{
+  method:'POST',
+  headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+  body:JSON.stringify({customer_id:customer,preview_only:true}),
+  signal:AbortSignal.timeout(30000)
+ });
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok||!result.ok)throw Error(result.error||'Could not load AI prompt preview.');
+ state.aiPromptPreview=result.full_prompt||'';
+ openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy Prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
+ return result;
+}
 async function signedPdf(path,bucket){const {data,error}=await state.sb.storage.from(bucket).createSignedUrl(path,120);if(error)throw error;window.open(data.signedUrl,'_blank','noopener,noreferrer')}
 async function downloadAllCustomerDocuments(){
  const customerId=currentCustomer();if(!customerId)throw Error('Select a customer first.');
@@ -487,16 +529,20 @@ async function handleClick(target){
   if(!canOperateUi())throw Error('This workspace is not authorized to view the AI search prompt.');
   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
   target.textContent='Loading prompt…';
-  const response=await fetch(config.supabaseUrl+'/functions/v1/run-job-search',{
-   method:'POST',
-   headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
-   body:JSON.stringify({customer_id:customer,preview_only:true}),
-   signal:AbortSignal.timeout(30000)
-  });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok||!result.ok)throw Error(result.error||'Could not load AI prompt preview.');
-  state.aiPromptPreview=result.full_prompt||'';
-  openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer. Unsaved form edits are not included until you save them.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy Prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
+  await showAiPromptPreview(customer);
+  return;
+ }
+ if(action==='update-ai-prompt'){
+  if(state.account.role==='customer')throw Error('This action is available from Customer Setup for Admin or assigned Staff.');
+  const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+  const values=profileFormValues();
+  target.textContent='Updating prompt…';
+  const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
+  if(error)throw error;
+  await loadData(state.me);
+  state.page='profile';render();
+  await showAiPromptPreview(customer);
+  notice('Customer preferences saved and AI search prompt updated.');
   return;
  }
  if(action==='copy-ai-prompt'){
@@ -619,14 +665,7 @@ async function handleSubmit(form){
   return;
  }
  if(type==='profileForm'){
-  const score=Number($('#min_fit_score').value);
-  if(!Number.isInteger(score)||score<0||score>100)throw Error('Fit score must be between 0 and 100');
-  const linked=$('#linkedin_url').value.trim();
-  if(linked&&!/^https:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_%.-]+\/?(?:\?.*)?$/.test(linked))throw Error('Enter a valid public LinkedIn profile URL (linkedin.com/in/...).');
-  const selected=[...document.querySelectorAll('input[name="career_objective"]:checked')].map(x=>'• '+x.value);
-  const goals=[...selected,$('#career_goals_detail').value.trim()].filter(Boolean).join('\n');
-  const target=$('#salary_target').value.trim();
-  const values={target_roles:$('#target_roles').value,career_goals:goals,preferred_locations:$('#preferred_locations').value,salary_min:$('#salary_min').value||null,work_preference:$('#work_preference').value,exclusions:$('#exclusions').value,search_instructions:$('#search_instructions').value,linkedin_url:linked,salary_target:target||null,service_tier:$('#service_tier').value,salary_currency:$('#salary_currency').value,transferable_roles:$('#transferable_roles').value,employment_types:$('#employment_types').value,industries:$('#industries').value,relocation_preferences:$('#relocation_preferences').value,pension_preferences:$('#pension_preferences').value,min_fit_score:score,updated_at:new Date().toISOString()};
+  const values=profileFormValues();
   const operator=state.account.role!=='customer';
   if(operator){
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
