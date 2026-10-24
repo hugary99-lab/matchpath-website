@@ -131,7 +131,8 @@ function searchResultsPage(){
    const workflow=j.review_status==='approved'?'Customer approved':j.review_status==='rejected'?'Customer rejected':eligible?'Awaiting customer approval':j.qualification_status==='Needs Verification'?'Held for verification':j.qualification_status==='Not Qualified'?'Not qualified':'Below customer fit threshold';
    const cls=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
    const app=state.apps.find(a=>a.job_id===j.id);
-   return '<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</span></div><div class="stack"><span class="badge '+cls+'">'+esc(j.qualification_status)+'</span>'+statusBadge(j.review_status)+'<span class="badge neutral">'+esc(workflow)+'</span>'+(j.requisition_id?'<span class="pill">Req '+esc(j.requisition_id)+'</span>':'')+(app?'<span class="pill">'+esc(app.application_code)+'</span>':'')+'</div><p>'+esc(j.fit_reason||'')+'</p>'+(j.concerns?'<p class="hint"><strong>Considerations:</strong> '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a></div></article>';
+   const adminCanStart=state.account.role==='admin'&&!app;
+   return '<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</span></div><div class="stack"><span class="badge '+cls+'">'+esc(j.qualification_status)+'</span>'+statusBadge(j.review_status)+'<span class="badge neutral">'+esc(workflow)+'</span>'+(j.requisition_id?'<span class="pill">Req '+esc(j.requisition_id)+'</span>':'')+(app?'<span class="pill">'+esc(app.application_code)+'</span>':'')+'</div><p>'+esc(j.fit_reason||'')+'</p>'+(j.concerns?'<p class="hint"><strong>Considerations:</strong> '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a>'+(adminCanStart?'<button class="btn small" data-action="admin-start-application" data-job="'+esc(j.id)+'">Start application</button>':'')+(app?'<button class="btn outline small" data-action="navigate" data-page="workbench">Open application</button>':'')+'</div></div></article>';
  }).join('')+'</div>';
  return html;
 }
@@ -260,6 +261,18 @@ async function handleClick(target){
   if(!confirm('Record this job as '+target.dataset.decision+'?'))return;
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
   if(error)throw error;await loadData();notice('Your decision has been recorded.');return;
+ }
+ if(action==='admin-start-application'){
+  if(state.account?.role!=='admin')throw Error('Administrator access required.');
+  const job=byId(state.jobs,target.dataset.job);if(!job||job.customer_id!==currentCustomer())throw Error('Job unavailable for this customer.');
+  if(!confirm('Start an application for '+job.job_title+' at '+job.company+' without separate customer approval? This will be audit logged as an Admin override.'))return;
+  const {data,error}=await state.sb.rpc('admin_start_application',{p_job:job.id});
+  if(error)throw error;
+  await loadData(state.me);
+  state.page='workbench';
+  render();
+  notice('Application started by Admin'+(data?.application_code?' · '+data.application_code:'')+'. Prepare the resume and cover letter, then record the actual submission.');
+  return;
  }
  if(action==='commit-csv'){
   if(!state.csvPreview)throw Error('No validated CSV selected');
