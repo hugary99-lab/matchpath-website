@@ -29,3 +29,17 @@
 .prompt-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .prompt-preview{max-height:58vh;overflow:auto;white-space:pre-wrap;word-break:break-word;background:#f7fafb;border:1px solid var(--edge);border-radius:10px;padding:14px;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#294554;margin:14px 0}
 @media(max-width:860px){.profile-grid{grid-template-columns:1fr}.profile-span{grid-column:auto}.profile-actions{position:static;align-items:flex-start;flex-direction:column}}
+
+
+/* Expandable profile field editor + voice input */
+.field-label-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.field-label-row>label{margin:0}
+.field-editor-tools{display:none;gap:5px;align-items:center}
+.profile-compact .field-editor-tools{display:flex}
+.btn.tiny{padding:3px 7px;font-size:10px;border-radius:6px;font-weight:700}
+.expanded-field-editor{width:100%;min-height:48vh;resize:vertical;border:1px solid #cddce3;border-radius:11px;padding:14px;font:15px/1.55 'DM Sans',system-ui,sans-serif;color:var(--ink)}
+.expanded-editor-footer{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-top:13px}
+.multi-check-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 10px;padding:9px 10px;border:1px solid #cddce3;border-radius:9px;background:#fff}
+.check-option{display:flex;align-items:center;gap:7px;font-size:13px;color:#456271;cursor:pointer}
+.check-option input{width:auto;margin:0}
+@media(max-width:660px){.expanded-editor-footer{flex-direction:column}.multi-check-grid{grid-template-columns:1fr}}
