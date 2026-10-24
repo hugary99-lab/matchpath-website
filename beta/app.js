@@ -1,6 +1,6 @@
 import config from './config.js';
 
-const SCHEMA = ['schema_version','customer_id','search_run_id','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
+const SCHEMA = ['schema_version','searched_at','job_title','company','location','work_arrangement','salary_min','salary_max','currency','job_url','source','fit_score','qualification_status','fit_reason','concerns'];
 const MANIFEST = ['schema_version','customer_id','application_id','resume_file','cover_letter_file'];
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -112,7 +112,7 @@ function importPage(){
  const id=currentCustomer();let html=head('Step 1 · Staff operations','Import a job-search batch','Download the standard CSV from ChatGPT, choose its customer, validate the file, and import once. The backend prevents duplicate job records.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  html+='<div class="warning">The CSV must contain this customer’s UUID (<code>'+esc(id)+'</code>) and a unique search_run_id. Only genuine evaluated postings should be included.</div>';
- html+='<section class="card section"><h2>1. Choose the CSV</h2><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 17 columns · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
+ html+='<section class="card section"><h2>1. Choose the CSV</h2><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are added by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
  if(state.csvPreview){const v=state.csvPreview;html+='<section class="card section"><h2>2. Validate and commit</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run '+esc(v.runId)+'</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>'}
  return html;
 }
@@ -243,7 +243,10 @@ async function handleClick(target){
  }
  if(action==='commit-csv'){
   if(!state.csvPreview)throw Error('No validated CSV selected');
-  const {data,error}=await state.sb.rpc('import_search_results',{p_customer:currentCustomer(),p_run_id:state.csvPreview.runId,p_rows:state.csvPreview.rows});
+  const customer=currentCustomer();
+  if(!customer)throw Error('Choose a customer workspace before importing.');
+  const rows=state.csvPreview.rows.map(r=>({...r,customer_id:customer,search_run_id:state.csvPreview.runId}));
+  const {data,error}=await state.sb.rpc('import_search_results',{p_customer:customer,p_run_id:state.csvPreview.runId,p_rows:rows});
   if(error)throw error;state.csvPreview=null;await loadData();notice(data?.already_imported?'Search run was already imported; nothing duplicated.':data?.new_rows+' new jobs imported, '+data?.duplicate_rows+' duplicates skipped.');return;
  }
  if(action==='status'){
@@ -375,18 +378,17 @@ function exactColumns(actual,expected){return actual.length===expected.length&&a
 async function validateCsvFile(file){
  if(!file||file.size>3*1024*1024)throw Error('CSV must be under 3 MB');
  const {keys,rows}=parseCsv(await file.text());
- if(!exactColumns(keys,SCHEMA))throw Error('CSV header does not match MatchPath Standard v1.0 (17 exact columns).');
+ if(!exactColumns(keys,SCHEMA))throw Error('CSV header does not match MatchPath Standard v1.0 (15 exact columns).');
  if(!rows.length||rows.length>250)throw Error('CSV batch must contain 1–250 rows');
- const id=currentCustomer(),run=rows[0].search_run_id;
  rows.forEach((r,i)=>{
-  if(r.schema_version!=='1.0'||r.customer_id!==id||r.search_run_id!==run)throw Error('Row '+(i+2)+': customer, schema or run ID mismatch');
+  if(r.schema_version!=='1.0')throw Error('Row '+(i+2)+': unsupported schema version');
+  if(!r.searched_at||!Number.isFinite(Date.parse(r.searched_at)))throw Error('Row '+(i+2)+': missing or invalid search timestamp');
   if(!r.job_title.trim()||!r.company.trim()||!safeUrl(r.job_url))throw Error('Row '+(i+2)+': missing employer/title or invalid HTTPS job URL');
   if(!['Qualified','Not Qualified','Needs Verification'].includes(r.qualification_status))throw Error('Row '+(i+2)+': invalid qualification status');
   if(r.fit_score!==''&&(!/^\d+$/.test(r.fit_score)||Number(r.fit_score)>100))throw Error('Row '+(i+2)+': invalid score');
-  if(r.searched_at&&!Number.isFinite(Date.parse(r.searched_at)))throw Error('Row '+(i+2)+': invalid search timestamp');
  });
- if(!run||run.length<3)throw Error('A unique search_run_id is required');
- state.csvPreview={runId:run,rows};render();notice('CSV passed format checks. Review and click Import validated batch.');
+ const run='MP-'+new Date().toISOString().replace(/[-:.]/g,'')+'-'+crypto.randomUUID().slice(0,8);
+ state.csvPreview={runId:run,rows};render();notice('CSV passed format checks. MatchPath assigned this file to the selected customer and generated a search run ID. Review and click Import validated batch.');
 }
 async function validatePdf(file){
  if(!file||file.size<10||file.size>6*1024*1024)throw Error('PDF must be 10 bytes–6 MB');
