@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:''};
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
 const customerAccount=(id)=>byId(state.accounts,id);
@@ -117,23 +117,42 @@ function importPage(){
  return html;
 }
 function searchResultsPage(){
- const id=currentCustomer(),rows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)),p=currentProfile(),threshold=p?.min_fit_score??90;
- let html=head('Staff operations','Search results','Inspect every imported posting for the selected customer. Customers can approve their own matches; Admin can also authorize an application directly. Staff cannot override approval.',customerPicker());
+ const id=currentCustomer(),allRows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+ let html=head('Staff operations','Search results','Review imported jobs in one table, filter the list, and update workflow status. Admin can move a job to Approved without separate customer approval; every change is audit logged.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
- if(!rows.length)return html+'<section class="card empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
- const qualified=rows.filter(j=>j.qualification_status==='Qualified').length;
- const verify=rows.filter(j=>j.qualification_status==='Needs Verification').length;
- const pendingReview=rows.filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold&&j.review_status==='pending').length;
- html+='<div class="grid"><div class="card stat"><div class="name">Imported jobs</div><div class="value">'+rows.length+'</div></div><div class="card stat"><div class="name">Qualified</div><div class="value">'+qualified+'</div></div><div class="card stat"><div class="name">Needs verification</div><div class="value">'+verify+'</div></div><div class="card stat"><div class="name">Awaiting customer decision</div><div class="value">'+pendingReview+'</div></div></div>';
- html+='<div class="warning section">Customers can approve their own qualified matches. Admin may use <strong>Start application</strong> to authorize work without separate customer approval; that action is audit logged. Staff cannot override authorization. <strong>Needs Verification</strong> jobs remain visible here so Admin can review them before deciding whether to proceed.</div>';
- html+='<div class="flex-col section">'+rows.map(j=>{
-   const eligible=j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=threshold;
-   const workflow=j.review_status==='approved'?'Authorized for application':j.review_status==='rejected'?'Rejected':eligible?'Awaiting customer/Admin authorization':j.qualification_status==='Needs Verification'?'Held for verification':j.qualification_status==='Not Qualified'?'Not qualified':'Below customer fit threshold';
-   const cls=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   const app=state.apps.find(a=>a.job_id===j.id);
-   const adminCanStart=state.account.role==='admin'&&!app;
-   return '<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</span></div><div class="stack"><span class="badge '+cls+'">'+esc(j.qualification_status)+'</span>'+statusBadge(j.review_status)+'<span class="badge neutral">'+esc(workflow)+'</span>'+(j.requisition_id?'<span class="pill">Req '+esc(j.requisition_id)+'</span>':'')+(app?'<span class="pill">'+esc(app.application_code)+'</span>':'')+'</div><p>'+esc(j.fit_reason||'')+'</p>'+(j.concerns?'<p class="hint"><strong>Considerations:</strong> '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a>'+(adminCanStart?'<button class="btn small" data-action="admin-start-application" data-job="'+esc(j.id)+'">Start application</button>':'')+(app?'<button class="btn outline small" data-action="navigate" data-page="workbench">Open application</button>':'')+'</div></div></article>';
- }).join('')+'</div>';
+ if(!allRows.length)return html+'<section class="card empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
+
+ const uiStatus=j=>j.review_status==='pending'?'new':j.review_status;
+ const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':'Rejected';
+ const search=state.resultSearch.trim().toLowerCase();
+ const rows=allRows.filter(j=>{
+   if(state.resultStatusFilter!=='all'&&uiStatus(j)!==state.resultStatusFilter)return false;
+   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
+   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
+   return true;
+ });
+
+ const counts={
+   new:allRows.filter(j=>uiStatus(j)==='new').length,
+   approved:allRows.filter(j=>uiStatus(j)==='approved').length,
+   skipped:allRows.filter(j=>uiStatus(j)==='skipped').length,
+   rejected:allRows.filter(j=>uiStatus(j)==='rejected').length
+ };
+
+ html+='<div class="grid"><div class="card stat"><div class="name">Total jobs</div><div class="value">'+allRows.length+'</div></div><div class="card stat"><div class="name">New</div><div class="value">'+counts.new+'</div></div><div class="card stat"><div class="name">Approved</div><div class="value">'+counts.approved+'</div></div><div class="card stat"><div class="name">Skipped / Rejected</div><div class="value">'+(counts.skipped+counts.rejected)+'</div></div></div>';
+
+ html+='<section class="card section"><form id="resultFilterForm"><div class="grid"><div class="field"><label for="resultSearch">Keyword</label><input id="resultSearch" value="'+esc(state.resultSearch)+'" placeholder="Title, employer, location, requisition..."></div><div class="field"><label for="resultStatusFilter">Status</label><select id="resultStatusFilter"><option value="all">All statuses</option>'+[['new','New'],['approved','Approved'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(state.resultStatusFilter===v?'selected':'')+'>'+n+'</option>').join('')+'</select></div><div class="field"><label for="resultQualificationFilter">Qualification</label><select id="resultQualificationFilter"><option value="all">All qualifications</option>'+['Qualified','Needs Verification','Not Qualified'].map(v=>'<option value="'+esc(v)+'" '+(state.resultQualificationFilter===v?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></div></div><div class="stack"><button class="btn small" type="submit">Apply filters</button><button class="btn ghost small" type="button" data-action="clear-result-filters">Clear</button><span class="hint">'+rows.length+' of '+allRows.length+' jobs shown</span></div></form></section>';
+
+ html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Employer / role</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
+   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed');
+   const current=uiStatus(j);
+   const statusControl=state.account.role==='admin'
+     ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:120px">'+[['new','New'],['approved','Approved'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
+     :'<span class="badge neutral">'+esc(statusLabel(current))+'</span>';
+   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(state.account.role==='admin'?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app?'<button class="btn outline small" data-action="navigate" data-page="workbench">Approved result</button>':'')+'</div></td></tr>';
+ }).join('')+'</tbody></table></div></section>';
+
  return html;
 }
 function workbenchPage(){
@@ -262,17 +281,23 @@ async function handleClick(target){
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
   if(error)throw error;await loadData();notice('Your decision has been recorded.');return;
  }
- if(action==='admin-start-application'){
+ if(action==='save-job-status'){
   if(state.account?.role!=='admin')throw Error('Administrator access required.');
   const job=byId(state.jobs,target.dataset.job);if(!job||job.customer_id!==currentCustomer())throw Error('Job unavailable for this customer.');
-  if(!confirm('Start an application for '+job.job_title+' at '+job.company+' without separate customer approval? This will be audit logged as an Admin override.'))return;
-  const {data,error}=await state.sb.rpc('admin_start_application',{p_job:job.id});
+  const select=$('#job-status-'+CSS.escape(job.id));if(!select)throw Error('Status control unavailable.');
+  const next=select.value;
+  const current=job.review_status==='pending'?'new':job.review_status;
+  if(next===current){notice('No status change to save.');return;}
+  const {data,error}=await state.sb.rpc('admin_set_job_review_status',{p_job:job.id,p_status:next});
   if(error)throw error;
   await loadData(state.me);
-  state.page='workbench';
+  state.page=next==='approved'?'workbench':'results';
   render();
-  notice('Application started by Admin'+(data?.application_code?' · '+data.application_code:'')+'. Prepare the resume and cover letter, then record the actual submission.');
+  notice('Job status saved as '+(next==='new'?'New':next[0].toUpperCase()+next.slice(1))+'.'+(next==='approved'?' It is now in Approved applications.':''));
   return;
+ }
+ if(action==='clear-result-filters'){
+  state.resultStatusFilter='all';state.resultQualificationFilter='all';state.resultSearch='';render();return;
  }
  if(action==='commit-csv'){
   if(!state.csvPreview)throw Error('No validated CSV selected');
@@ -311,6 +336,13 @@ async function handleClick(target){
 }
 async function handleSubmit(form){
  const type=form.id;
+ if(type==='resultFilterForm'){
+  state.resultSearch=$('#resultSearch')?.value||'';
+  state.resultStatusFilter=$('#resultStatusFilter')?.value||'all';
+  state.resultQualificationFilter=$('#resultQualificationFilter')?.value||'all';
+  render();
+  return;
+ }
  if(type==='inviteAccountForm'){
   if(state.account?.role!=='admin')throw Error('Administrator access required.');
   const response=await fetch(config.supabaseUrl+'/functions/v1/admin-invite-account',{method:'POST',headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},body:JSON.stringify({full_name:$('#inviteName').value.trim(),email:$('#inviteEmail').value.trim(),role:$('#inviteRole').value}),signal:AbortSignal.timeout(15000)});
