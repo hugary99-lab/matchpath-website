@@ -37,12 +37,12 @@ function renderAuth(mode='login'){
 function navItems(){
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  if(isDiyCustomer())return [['overview','Overview'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  if(isDiyCustomer())return [['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['import','Search Openings'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['import','Search Openings'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
+  :[['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
@@ -80,8 +80,8 @@ function dashboard(){
  html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';
  if(!id&&role!=='customer')return html+'<div class="card section empty"><strong>No assigned customers yet</strong>Admin can assign customers in Accounts & access.</div>';
  const nextPage=!operator?'matches':role==='customer'?'queue-new':'import';
- const nextLabel=!operator?'Review matches':role==='customer'?'Review new results':'Import search results';
- html+='<div class="section grid two"><div class="card"><h2>'+(!operator?'What happens next':'Daily workflow')+'</h2><ul class="checklist">'+(!operator?'<li>Review your verified job matches</li><li>Approve the jobs you want pursued</li><li>Access documents and submission updates</li>':role==='customer'?'<li>Review new job results</li><li>Approve or skip opportunities</li><li>Prepare/download tailored documents</li><li>Apply and record submission confirmation</li>':'<li>Choose a customer and import a search CSV</li><li>Review and authorize the right jobs</li><li>Prepare job-specific documents</li><li>Apply on employer site and record confirmation</li>')+'</ul><button class="btn" data-action="navigate" data-page="'+nextPage+'">'+nextLabel+'</button></div><div class="card"><h2>Recent applications</h2>'+(a.length?a.slice(0,4).map(x=>{const job=byId(state.jobs,x.job_id);return '<div class="detail space"><div><div class="title">'+esc(job?.job_title||x.application_code)+'</div><div class="sub">'+esc(job?.company||'')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty"><strong>No applications yet</strong>Approved jobs will appear here.</div>')+'</div></div>';
+ const nextLabel=!operator?'Review matches':'Job Search';
+ html+='<div class="section grid two"><div class="card"><h2>'+(!operator?'What happens next':'Daily workflow')+'</h2><ul class="checklist">'+(!operator?'<li>Review your verified job matches</li><li>Approve the jobs you want pursued</li><li>Access documents and submission updates</li>':role==='customer'?'<li>Review new job results</li><li>Approve or skip opportunities</li><li>Prepare/download tailored documents</li><li>Apply and record submission confirmation</li>':'<li>Choose a customer and run AI Job Search or import a CSV</li><li>Review and authorize the right jobs</li><li>Prepare job-specific documents</li><li>Apply on employer site and record confirmation</li>')+'</ul><button class="btn" data-action="navigate" data-page="'+nextPage+'">'+nextLabel+'</button></div><div class="card"><h2>Recent applications</h2>'+(a.length?a.slice(0,4).map(x=>{const job=byId(state.jobs,x.job_id);return '<div class="detail space"><div><div class="title">'+esc(job?.job_title||x.application_code)+'</div><div class="sub">'+esc(job?.company||'')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty"><strong>No applications yet</strong>Approved jobs will appear here.</div>')+'</div></div>';
  if(role!=='customer'){html+='<section class="section card"><h2>Last search batches</h2>'+(state.runs.filter(x=>x.customer_id===id).slice(0,5).map(x=>'<p><span class="pill">'+esc(x.external_id)+'</span> · '+x.new_rows+' new · '+x.duplicate_rows+' duplicates · '+fmtDate(x.created_at)+'</p>').join('')||'<p class="muted">No imports yet.</p>')+'</section>'}
  return html;
 }
@@ -127,11 +127,16 @@ function profilePage(){
  '<div class="stack"><button class="btn" type="submit">Save onboarding information</button>'+(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download previous baseline resume</button>':'')+'</div></form></section>';
 }
 function importPage(){
- const id=currentCustomer();let html=head('Step 1 · Staff operations','Import a job-search batch','Download the standard CSV from ChatGPT, choose its customer, validate the file, and import once. The backend prevents duplicate job records.',customerPicker());
+ const id=currentCustomer(),p=currentProfile()||{};
+ let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
- html+='<div class="warning">The CSV contains job-search data only. MatchPath backend assigns schema version, customer identity, and search-run identity during import. Only genuine evaluated postings should be included.</div>';
- html+='<section class="card section"><h2>1. Choose the CSV</h2><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are added by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
- if(state.csvPreview){const v=state.csvPreview;html+='<section class="card section"><h2>2. Validate and commit</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>'}
+ const hasInstructions=[p.target_roles,p.search_instructions,p.career_goals,p.preferred_locations,p.industries].some(v=>String(v||'').trim());
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??90)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
+ html+='<section class="card section"><h2>Manual CSV Import</h2><p class="muted">Keep the existing manual path for ChatGPT/analyst search batches or recovery workflows.</p><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are assigned by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
+ if(state.csvPreview){
+  const v=state.csvPreview;
+  html+='<section class="card section"><h2>Validate and import</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>';
+ }
  return html;
 }
 function jobResultUiStatus(j){
@@ -278,7 +283,7 @@ function render(){
  buildNav();
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  const allowed=isDiyCustomer()?['overview','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','profile'];
+  const allowed=isDiyCustomer()?['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','profile'];
   if(!allowed.includes(state.page))state.page='overview';
  }
  if(r!=='customer'&&!['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
@@ -482,6 +487,37 @@ async function handleClick(target){
   openDialog('Confirm selected submissions','<p class="warning">Only confirm jobs that were genuinely submitted to the employer. Enter a confirmation/reference for each application.</p><form id="bulkSubmitForm">'+rows.map(x=>'<div class="field"><label for="bulk-ref-'+esc(x.app.id)+'">'+esc(x.job.job_title)+' · '+esc(x.job.company)+'</label><input id="bulk-ref-'+esc(x.app.id)+'" type="text" minlength="3" required placeholder="Employer confirmation / reference"></div>').join('')+area('bulkSubmissionNotes','Shared submission note (optional)')+'<button class="btn" type="submit">Confirm '+rows.length+' Submitted</button></form>');
   return;
  }
+ if(action==='run-ai-search'){
+  if(!canOperateUi())throw Error('This workspace is not authorized to run job searches.');
+  const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+  target.textContent='Searching current openings…';
+  notice('AI Job Search is checking current openings using the saved search instructions.');
+  const response=await fetch(config.supabaseUrl+'/functions/v1/run-job-search',{
+   method:'POST',
+   headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+   body:JSON.stringify({customer_id:customer}),
+   signal:AbortSignal.timeout(120000)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.ok)throw Error(result.error||'AI Job Search failed (HTTP '+response.status+').');
+  const rows=Array.isArray(result.jobs)?result.jobs:[];
+  if(!rows.length){
+   openDialog('No matching openings found','<p>The AI search completed, but no current openings met the saved search criteria.</p>');
+   notice('AI Job Search completed with no new qualifying openings.');
+   return;
+  }
+  const {data,error}=await state.sb.rpc('import_search_results_v2',{p_customer:customer,p_rows:rows});
+  if(error)throw error;
+  await loadData(state.me);
+  if((data?.new_rows||0)>0){
+   state.page='queue-new';render();
+   notice((data.new_rows||0)+' new job'+((data.new_rows||0)===1?'':'s')+' added to To be reviewed. '+(data.duplicate_rows||0)+' duplicate'+((data.duplicate_rows||0)===1?'':'s')+' skipped.');
+  }else{
+   state.page='import';render();
+   openDialog('No new openings','<p>The AI search found '+rows.length+' matching posting'+(rows.length===1?'':'s')+', but all were already in MatchPath.</p>');
+  }
+  return;
+ }
  if(action==='clear-result-filters'){
   state.resultStatusFilter='all';state.resultQualificationFilter='all';state.resultSearch='';render();return;
  }
@@ -492,7 +528,7 @@ async function handleClick(target){
   const {data,error}=await state.sb.rpc('import_search_results_v2',{p_customer:customer,p_rows:state.csvPreview.rows});
   if(error)throw error;
   const runId=data?.search_run_id||'assigned';
-  state.csvPreview=null;await loadData();notice(data?.new_rows+' new jobs imported, '+data?.duplicate_rows+' duplicates skipped. Run '+runId+'.');return;
+  state.csvPreview=null;await loadData(state.me);if((data?.new_rows||0)>0)state.page='queue-new';render();notice(data?.new_rows+' new jobs imported, '+data?.duplicate_rows+' duplicates skipped. Run '+runId+'.');return;
  }
  if(action==='status'){
   const {error}=await state.sb.rpc('staff_set_application_status',{p_application:target.dataset.app,p_status:target.dataset.status,p_reference:null,p_note:''});
