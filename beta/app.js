@@ -41,8 +41,8 @@ function navItems(){
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['import','Search Openings'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
+  :[['overview','Overview'],['import','Search Openings'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
