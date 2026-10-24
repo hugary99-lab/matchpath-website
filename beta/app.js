@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{}};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[]};
 let resultSearchTimer=null;
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
@@ -34,12 +34,21 @@ function renderAuth(mode='login'){
  const signup=mode==='signup';
  $('#page').innerHTML='<div class="auth"><section class="card"><div class="eyebrow">Member access</div><h1>'+(signup?'Create your account':'Welcome back')+'</h1><p>'+(signup?'Start your confidential career-search profile. No charges are collected in this beta.':'Sign in to your personal MatchPath workspace.')+'</p><form id="authForm" data-mode="'+mode+'">'+(signup?field('authName','Your name','','text','autocomplete="name" required'):'')+field('authEmail','Email address','','email','autocomplete="email" required')+field('authPassword','Password','','password','autocomplete="'+(signup?'new-password':'current-password')+'" minlength="8" required')+'<button class="btn" type="submit">'+(signup?'Create account':'Sign in')+'</button></form><div class="auth-switch">'+(signup?'Already registered? <button class="btn ghost small" data-action="show-login">Sign in</button>':'New customer? <button class="btn ghost small" data-action="show-signup">Create account</button>')+'</div><hr><p class="hint">Staff and admin access is assigned by an administrator. Creating an account does not grant staff permissions.</p></section></div>';
 }
-function navItems(){const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;return r==='customer'?[['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']]:r==='staff'?[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]:[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];}
+function navItems(){
+ const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
+ if(r==='customer'){
+  if(isDiyCustomer())return [['overview','Overview'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
+ }
+ return r==='staff'
+  ?[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
+  :[['overview','Overview'],['import','Import search CSV'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+}
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
  const r=state.account.role;
  const preview=r==='admin'&&state.workspaceView==='staff';
- $('#modeLabel').innerHTML=r==='admin'?'<label for="workspaceSwitch">Workspace </label><select id="workspaceSwitch"><option value="admin" '+(!preview?'selected':'')+'>Admin workspace</option><option value="staff" '+(preview?'selected':'')+'>Staff workspace preview</option></select>':(r==='staff'?'Staff':'Customer')+' workspace';
+ $('#modeLabel').innerHTML=r==='admin'?'<label for="workspaceSwitch">Workspace </label><select id="workspaceSwitch"><option value="admin" '+(!preview?'selected':'')+'>Admin workspace</option><option value="staff" '+(preview?'selected':'')+'>Staff workspace preview</option></select>':(r==='staff'?'Staff':isDiyCustomer()?'DIY customer':'Customer')+' workspace';
  $('#signedInAs').innerHTML='<strong>'+esc(state.account.full_name||state.me.email)+'</strong><span>'+esc(state.me.email)+'</span><span>'+esc(r.toUpperCase())+(preview?' · STAFF PREVIEW':'')+'</span>';
  $('#mainNav').innerHTML=navItems().map(([id,n])=>'<button type="button" class="nav-button '+(state.page===id?'active':'')+'" data-action="navigate" data-page="'+id+'">'+esc(n)+'</button>').join('');
 }
@@ -53,6 +62,9 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+function isDiyCustomer(){return state.account?.role==='customer'&&(currentProfile()?.service_tier||'diy')==='diy'}
+function canOperateUi(){return state.account?.role==='admin'||state.account?.role==='staff'||isDiyCustomer()}
+function operatorEyebrow(){return state.account?.role==='customer'?'DIY job search':'Staff operations'}
 function filteredQualifiedJobs(){const id=currentCustomer(),p=currentProfile();return matchingJobs(id).filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=(p?.min_fit_score??90))}
 function dashboard(){
  const role=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role, id=currentCustomer();
@@ -156,11 +168,11 @@ function jobResultsPanel(forcedStatus='all'){
    const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
    const current=jobResultUiStatus(j);
    const lockedApplied=current==='applied';
-   const statusControl=state.account.role==='admin'
+   const statusControl=canOperateUi()
      ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:132px" '+(lockedApplied?'disabled title="Submitted records are immutable"':'')+'>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
      :'<span class="badge neutral">'+esc(statusLabel(current))+'</span>';
    const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(state.account.role==='admin'&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Documents</button>':'')+'</div></td></tr>';
+   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(canOperateUi()&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Documents</button>':'')+'</div></td></tr>';
  }).join('')+'</tbody></table></div></section></section>';
  return html;
 }
@@ -172,7 +184,7 @@ function updateReviewSaveState(){
 }
 function newReviewTriagePage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='new').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
- let html=head('Staff operations','To be reviewed','Review new search results. Each job starts as To Be Reviewed. Change only the rows you want to Approve or Skip, then save all decisions together.',customerPicker());
+ let html=head(operatorEyebrow(),'To be reviewed','Review new search results. Each job starts as To Be Reviewed. Change only the rows you want to Approve or Skip, then save all decisions together.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  const search=state.resultSearch.trim().toLowerCase();
  const rows=allRows.filter(j=>{
@@ -190,11 +202,40 @@ function newReviewTriagePage(){
  }).join('')+'</tbody></table></div></section>';
  return html;
 }
+function approvedSelectionIds(){return Object.keys(state.approvedSelections||{}).filter(id=>state.approvedSelections[id])}
+function updateApprovedBulkState(){
+ const count=approvedSelectionIds().length;
+ const label=$('#approvedSelectedCount');
+ if(label)label.textContent=count+' selected';
+ ['approvedResumeBatch','approvedSaveStatus','approvedMarkSubmitted','approvedOpenPostings'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+}
+function approvedResultsPage(){
+ const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='approved').sort((a,b)=>(b.fit_score??-1)-(a.fit_score??-1));
+ let html=head(operatorEyebrow(),'Approved','Jobs authorized for application preparation but not yet submitted. Select multiple jobs to work as a batch.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ const search=state.resultSearch.trim().toLowerCase();
+ const rows=allRows.filter(j=>{
+  if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
+  if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
+  return true;
+ });
+ html+=resultFilterControls('approved',rows.length,allRows.length);
+ const selectedCount=approvedSelectionIds().length;
+ html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Create / Download Resumes</button><button class="btn outline small" id="approvedSaveStatus" data-action="approved-save-status" '+(selectedCount?'':'disabled')+'>Save Status</button><button class="btn small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>Mark Submitted</button><button class="btn ghost small" id="approvedOpenPostings" data-action="approved-open-postings" '+(selectedCount?'':'disabled')+'>Open Selected Postings ↗</button></div></div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs match the current filters.</strong></section>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
+  const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed');
+  const res=app?docFor(app.id,'resume'):null,letter=app?docFor(app.id,'cover_letter'):null;
+  const draft=state.approvedStatusDrafts[j.id]||'approved';
+  const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  return '<tr><td><input type="checkbox" data-approved-select data-job="'+esc(j.id)+'" '+(state.approvedSelections[j.id]?'checked':'')+' aria-label="Select '+esc(j.job_title)+'"></td><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):''))+'</small></td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td><select class="form-control" data-approved-status data-job="'+esc(j.id)+'"><option value="approved" '+(draft==='approved'?'selected':'')+'>Approved</option><option value="new" '+(draft==='new'?'selected':'')+'>To be reviewed</option><option value="skipped" '+(draft==='skipped'?'selected':'')+'>Skipped</option><option value="rejected" '+(draft==='rejected'?'selected':'')+'>Rejected</option></select></td><td><small>'+(res?'Resume ✓':'Resume missing')+'</small><small>'+(letter?'Cover letter ✓':'Cover letter missing')+'</small></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Open posting / Apply ↗</a></td></tr>';
+ }).join('')+'</tbody></table></div></section>';
+ return html;
+}
 function queuePage(status,title,description){
- return head('Staff operations',title,description,customerPicker())+jobResultsPanel(status);
+ return head(operatorEyebrow(),title,description,customerPicker())+jobResultsPanel(status);
 }
 function newResultsPage(){return newReviewTriagePage();}
-function approvedResultsPage(){return queuePage('approved','Approved search results','Jobs authorized for application preparation but not yet submitted.');}
 function submittedResultsPage(){return queuePage('applied','Submitted','Applications confirmed as submitted to the employer.');}
 function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs intentionally retained but not currently being pursued.');}
 function allResultsPage(){return queuePage('all','All search results','Complete search-result history for the selected customer, including rejected items.');}
@@ -231,7 +272,10 @@ function render(){
  if(!state.account)return renderAuth();
  buildNav();
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
- if(r==='customer'&&!['overview','matches','applications','profile'].includes(state.page))state.page='overview';
+ if(r==='customer'){
+  const allowed=isDiyCustomer()?['overview','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','profile'];
+  if(!allowed.includes(state.page))state.page='overview';
+ }
  if(r!=='customer'&&!['overview','import','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
  const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,profile:profilePage,import:importPage,'queue-new':newResultsPage,'queue-approved':approvedResultsPage,'queue-submitted':submittedResultsPage,'queue-skipped':skippedResultsPage,'queue-all':allResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
@@ -312,6 +356,35 @@ async function downloadAllCustomerDocuments(){
  link.href=objectUrl;link.download='MatchPath_'+customerId.slice(0,8)+'_approved_documents.zip';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
  notice('ZIP prepared: '+downloaded+' PDFs from '+applications.length+' approved applications.'+(missing.length?' '+missing.length+' missing documents are listed in manifest.csv.':''));
 }
+async function downloadSelectedResumes(jobIds){
+ const selected=jobIds.map(id=>byId(state.jobs,id)).filter(Boolean);
+ if(!selected.length)throw Error('Select at least one approved job.');
+ const {default:JSZip}=await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+ const zip=new JSZip(),manifest=['job_title,company,resume_status'];
+ let ready=0,missing=0;
+ for(const job of selected){
+  const app=state.apps.find(a=>a.job_id===job.id&&a.status!=='closed');
+  const doc=app?docFor(app.id,'resume'):null;
+  const safeName=(job.company+'_'+job.job_title).replace(/[^a-zA-Z0-9_-]+/g,'_').slice(0,120);
+  if(!app||!doc){missing++;manifest.push([job.job_title,job.company,'missing'].map(csvCell).join(','));continue;}
+  const url=config.supabaseUrl+'/storage/v1/object/authenticated/matchpath-documents/'+doc.storage_path.split('/').map(encodeURIComponent).join('/');
+  const response=await fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},signal:AbortSignal.timeout(30000)});
+  if(!response.ok)throw Error('Could not download resume for '+job.job_title+' (HTTP '+response.status+').');
+  const pdf=await response.blob();
+  if(pdf.size<4||!(await pdf.slice(0,4).text()).startsWith('%PDF'))throw Error('Invalid resume PDF for '+job.job_title);
+  zip.file(safeName+'_resume_v'+doc.version+'.pdf',pdf);ready++;
+  manifest.push([job.job_title,job.company,'included'].map(csvCell).join(','));
+ }
+ if(!ready){
+  state.page='documents';render();
+  throw Error('None of the selected jobs has a tailored resume yet. MatchPath AI resume generation is not connected yet; use Documents to add the resumes.');
+ }
+ zip.file('manifest.csv',manifest.join('\r\n'));
+ const archive=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:4}});
+ const link=document.createElement('a'),objectUrl=URL.createObjectURL(archive);
+ link.href=objectUrl;link.download='MatchPath_selected_resumes.zip';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
+ notice('Downloaded '+ready+' selected resume'+(ready===1?'':'s')+'.'+(missing?' '+missing+' selected job'+(missing===1?' needs':'s need')+' resume preparation.':''));
+}
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
@@ -325,11 +398,11 @@ async function handleClick(target){
   if(error)throw error;await loadData();notice('Your decision has been recorded.');return;
  }
  if(action==='save-review-decisions'){
-  if(state.account?.role!=='admin')throw Error('Administrator access required.');
+  if(!canOperateUi())throw Error('This workspace is not authorized to change job status.');
   const updates=Object.entries(state.reviewDrafts||{}).filter(([,status])=>status==='approved'||status==='skipped').map(([job_id,status])=>({job_id,status}));
   if(!updates.length){notice('No review decisions to save.');return;}
   if(!confirm('Save '+updates.length+' review decision'+(updates.length===1?'':'s')+'? Approved jobs will move to Approved; skipped jobs will move to Skipped.'))return;
-  const {data,error}=await state.sb.rpc('admin_apply_job_review_decisions',{p_updates:updates});
+  const {data,error}=await state.sb.rpc('operator_apply_job_review_decisions',{p_updates:updates});
   if(error)throw error;
   state.reviewDrafts={};
   await loadData(state.me);
@@ -357,12 +430,43 @@ async function handleClick(target){
    openDialog('Confirm actual job application','<p class="warning">Use Applied only after the employer application was genuinely submitted. Record a confirmation/reference or verifiable acknowledgment.</p><form id="submitForm" data-app="'+esc(app.id)+'" data-return-page="queue-submitted">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm Applied</button></form>');
    return;
   }
-  const {error}=await state.sb.rpc('admin_set_job_review_status',{p_job:job.id,p_status:next});
+  const {error}=await state.sb.rpc('operator_set_job_review_status',{p_job:job.id,p_status:next});
   if(error)throw error;
   await loadData(state.me);
   state.page=next==='new'?'queue-new':next==='approved'?'queue-approved':next==='skipped'?'queue-skipped':'queue-all';
   render();
   notice('Job status saved as '+(next==='new'?'To be reviewed':next[0].toUpperCase()+next.slice(1))+'.');
+  return;
+ }
+ if(action==='approved-resume-batch'){
+  if(!canOperateUi())throw Error('Not authorized.');
+  await downloadSelectedResumes(approvedSelectionIds());return;
+ }
+ if(action==='approved-save-status'){
+  if(!canOperateUi())throw Error('Not authorized.');
+  const ids=approvedSelectionIds();
+  const updates=ids.map(job_id=>({job_id,status:state.approvedStatusDrafts[job_id]||'approved'})).filter(x=>x.status!=='approved');
+  if(!updates.length){notice('No selected status changes to save.');return;}
+  const {data,error}=await state.sb.rpc('operator_bulk_set_job_statuses',{p_updates:updates});
+  if(error)throw error;
+  state.approvedSelections={};state.approvedStatusDrafts={};
+  await loadData(state.me);state.page='queue-approved';render();
+  notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
+ }
+ if(action==='approved-open-postings'){
+  const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
+  ids.map(id=>byId(state.jobs,id)).filter(Boolean).forEach(j=>{const u=safeUrl(j.job_url);if(u)window.open(u,'_blank','noopener,noreferrer')});
+  return;
+ }
+ if(action==='approved-mark-submitted'){
+  if(!canOperateUi())throw Error('Not authorized.');
+  const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
+  const rows=ids.map(id=>{const job=byId(state.jobs,id);const app=state.apps.find(a=>a.job_id===id&&a.status!=='closed');return {job,app}}).filter(x=>x.job&&x.app);
+  if(rows.length!==ids.length)throw Error('Every selected job must have an active application.');
+  const missing=rows.filter(x=>!canPrepare(x.app));
+  if(missing.length)throw Error(missing.length+' selected application'+(missing.length===1?' is':'s are')+' missing a resume or cover letter.');
+  state.bulkSubmitApps=rows.map(x=>x.app.id);
+  openDialog('Confirm selected submissions','<p class="warning">Only confirm jobs that were genuinely submitted to the employer. Enter a confirmation/reference for each application.</p><form id="bulkSubmitForm">'+rows.map(x=>'<div class="field"><label for="bulk-ref-'+esc(x.app.id)+'">'+esc(x.job.job_title)+' · '+esc(x.job.company)+'</label><input id="bulk-ref-'+esc(x.app.id)+'" type="text" minlength="3" required placeholder="Employer confirmation / reference"></div>').join('')+area('bulkSubmissionNotes','Shared submission note (optional)')+'<button class="btn" type="submit">Confirm '+rows.length+' Submitted</button></form>');
   return;
  }
  if(action==='clear-result-filters'){
@@ -474,6 +578,19 @@ async function handleSubmit(form){
    uploaded++;
   }
   await loadData();notice('Onboarding saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'')+' AI career profiling has not started.');return;
+ }
+ if(type==='bulkSubmitForm'){
+  const ids=[...(state.bulkSubmitApps||[])];
+  if(!ids.length)throw Error('No selected applications.');
+  const note=$('#bulkSubmissionNotes')?.value||'';
+  const updates=ids.map(application_id=>({application_id,reference:$('#bulk-ref-'+CSS.escape(application_id))?.value.trim()||'',note}));
+  if(updates.some(x=>x.reference.length<3))throw Error('Every selected application requires a confirmation/reference.');
+  const {data,error}=await state.sb.rpc('operator_bulk_mark_submitted',{p_updates:updates});
+  if(error)throw error;
+  state.bulkSubmitApps=[];state.approvedSelections={};state.approvedStatusDrafts={};
+  closeDialog();await loadData(state.me);state.page='queue-submitted';render();
+  notice((data?.submitted||updates.length)+' application'+((data?.submitted||updates.length)===1?'':'s')+' marked Submitted.');
+  return;
  }
  if(type==='singleDocumentForm'){
   const app=$('#singleApp').value,kind=$('#singleKind').value,file=$('#singlePdf').files?.[0];
@@ -605,6 +722,19 @@ document.addEventListener('change',async e=>{
    render();
    return;
   }
+  if(e.target.id==='approvedSelectAll'){
+   document.querySelectorAll('[data-approved-select]').forEach(box=>{box.checked=e.target.checked;state.approvedSelections[box.dataset.job]=e.target.checked});
+   updateApprovedBulkState();return;
+  }
+  if(e.target.matches('[data-approved-select]')){
+   state.approvedSelections[e.target.dataset.job]=e.target.checked;
+   updateApprovedBulkState();return;
+  }
+  if(e.target.matches('[data-approved-status]')){
+   const job=e.target.dataset.job,status=e.target.value;
+   if(status==='approved')delete state.approvedStatusDrafts[job];else state.approvedStatusDrafts[job]=status;
+   return;
+  }
   if(e.target.matches('[data-review-choice]')){
    const job=e.target.dataset.job,status=e.target.value;
    if(status==='new')delete state.reviewDrafts[job];
@@ -613,12 +743,12 @@ document.addEventListener('change',async e=>{
    return;
   }
   if(e.target.id==='workspaceSwitch'&&state.account?.role==='admin'){
-   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;state.reviewDrafts={};render();return;
+   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
   }
   if(e.target.id==='previewStaffSelect'&&state.account?.role==='admin'){
-   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;state.reviewDrafts={};render();return;
+   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
   }
-  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;state.reviewDrafts={};render();return}
+  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
   if(e.target.dataset.change==='assign'){
