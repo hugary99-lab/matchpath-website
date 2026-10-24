@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>'<div class="field"><label
 const area=(id,label,value='',hint='')=>'<div class="field"><label for="'+esc(id)+'">'+esc(label)+'</label><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[]};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:''};
 let resultSearchTimer=null;
 const byId=(rows,id)=>rows.find(r=>r.id===id);
 const currentCustomer=()=>state.account?.role==='customer'?state.account.id:state.selectedCustomer;
@@ -107,24 +107,17 @@ function profilePage(){
  const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
  const cleanInstructions=String(p.search_instructions||'').replace(/^LinkedIn profile: https:\/\/[^\s]+\n?/m,'');
  const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
- const headingExtra=operator?'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="navigate" data-page="import">← Back to Job Search</button></div>':'';
+ const headingExtra=operator
+   ?'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="view-ai-prompt">View Full AI Search Prompt</button><button class="btn ghost small" data-action="navigate" data-page="import">Back to Job Search</button></div>'
+   :'<button class="btn outline small" data-action="view-ai-prompt">View Full AI Search Prompt</button>';
  let html=head(operator?'Customer setup':'Customer onboarding',operator?customerName(id)+' · Profile & Search Preferences':'Build your career search',operator?'Update the selected customer\'s search profile and preferences used by MatchPath AI Job Search.':'Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.',headingExtra);
- html+='<section class="card"><form id="profileForm"><h2>1 · Background</h2><p class="hint">Do not enter passwords or private LinkedIn access tokens. MatchPath uses only the public LinkedIn URL as profile context.</p>'+
- field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
- (operator?'':'<div class="field"><label for="referenceFiles">Upload reference resumes (PDF, multiple files)</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately; no automatic AI processing is triggered by saving.</span></div><div class="field"><strong>Uploaded reference resumes</strong><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div></div>')+
- '<h2>2 · Career direction</h2><p class="hint">Select every goal that matters and describe the most important tradeoffs.</p>'+
- '<div class="field">'+objectiveOptions.map(o=>'<label style="display:block;margin:9px 0"><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
- area('career_goals_detail','Career destination, priorities and timeline',goalsFree,'Example: move from consulting into a permanent public-sector IT manager role within six months; pension matters more than a 10% salary increase.')+
- area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent or transferable roles',p.transferable_roles)+
- '<h2>3 · Search preferences and constraints</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+
- '<div class="form-row">'+field('salary_min','Minimum acceptable compensation',p.salary_min||'','number','min="0"')+'<div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'+
- field('salary_target','Aspirational compensation target',p.salary_target||'','number','min="0" placeholder="Optional; describe in priorities if needed"')+
- '<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div><div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
- area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+area('pension_preferences','Benefits and pension preferences',p.pension_preferences)+
- area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
- area('search_instructions','Flexible preferences and additional search instructions',cleanInstructions,'These instructions are used by AI Job Search. Keep nice-to-have preferences separate from hard exclusions.')+
- '<div class="form-row">'+field('min_fit_score','Minimum fit score (0–100)',p.min_fit_score??90,'number','min="0" max="100" required')+'</div>'+
- '<div class="stack"><button class="btn" type="submit">'+(operator?'Save Customer Profile':'Save onboarding information')+'</button>'+(operator?'<button class="btn outline" type="button" data-action="navigate" data-page="import">Back to Job Search</button>':(p.baseline_resume_path?'<button type="button" class="btn outline" data-action="baseline-download">Download previous baseline resume</button>':''))+'</div></form></section>';
+ html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
+ '<section class="card profile-panel"><h2>Search focus</h2>'+area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent / transferable roles',p.transferable_roles)+area('industries','Industries and sectors',p.industries)+area('employment_types','Employment type',p.employment_types)+'</section>'+
+ '<section class="card profile-panel"><h2>Location, work & compensation</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+'<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_min','Minimum compensation',p.salary_min||'','number','min="0"')+'</div><div class="form-row"><div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+area('pension_preferences','Benefits / pension preferences',p.pension_preferences)+'</section>'+
+ '<section class="card profile-panel"><h2>Career priorities</h2><div class="profile-objectives">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+area('career_goals_detail','Career destination, priorities and timeline',goalsFree)+'</section>'+
+ '<section class="card profile-panel"><h2>AI search controls</h2>'+field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+area('search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+'<div class="form-row">'+field('min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+'<div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div></section>'+
+ (!operator?'<section class="card profile-panel profile-span"><h2>Reference resumes</h2><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately.</span></div><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div></section>':'')+
+ '</div><section class="profile-actions"><div><strong>AI prompt preview uses the saved profile.</strong><span class="hint"> Save changes first if you want the prompt preview to reflect edits on this page.</span></div><div class="stack"><button class="btn" type="submit">'+(operator?'Save Customer Profile':'Save Profile')+'</button><button class="btn outline" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'+(operator?'<button class="btn ghost" type="button" data-action="navigate" data-page="import">Back to Job Search</button>':'')+'</div></section></form>';
  return html;
 }
 function importPage(){
@@ -133,7 +126,7 @@ function importPage(){
  let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',extra);
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  const hasInstructions=[p.target_roles,p.search_instructions,p.career_goals,p.preferred_locations,p.industries].some(v=>String(v||'').trim());
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??90)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><div class="stack"><button class="btn outline small" data-action="view-ai-prompt" '+(hasInstructions?'':'disabled')+'>View AI Prompt</button><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??90)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
  html+='<section class="card section"><h2>Manual CSV Import</h2><p class="muted">Keep the existing manual path for ChatGPT/analyst search batches or recovery workflows.</p><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are assigned by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
  if(state.csvPreview){
   const v=state.csvPreview;
@@ -337,8 +330,8 @@ async function loadData(knownUser=null){
 }
 const refresh=async()=>{try{await loadData();}catch(e){notice(errorMsg(e),true)}};
 function errorMsg(e){return e?.message || String(e || 'Unknown error')}
-function openDialog(title,body){$('#dialogTitle').textContent=title;$('#dialogBody').innerHTML=body;$('#dialog').classList.remove('hidden')}
-function closeDialog(){$('#dialog').classList.add('hidden');$('#dialogBody').replaceChildren()}
+function openDialog(title,body,wide=false){$('#dialogTitle').textContent=title;$('#dialogBody').innerHTML=body;$('#dialog .modal')?.classList.toggle('wide',wide);$('#dialog').classList.remove('hidden')}
+function closeDialog(){$('#dialog').classList.add('hidden');$('#dialog .modal')?.classList.remove('wide');$('#dialogBody').replaceChildren()}
 async function signedPdf(path,bucket){const {data,error}=await state.sb.storage.from(bucket).createSignedUrl(path,120);if(error)throw error;window.open(data.signedUrl,'_blank','noopener,noreferrer')}
 async function downloadAllCustomerDocuments(){
  const customerId=currentCustomer();if(!customerId)throw Error('Select a customer first.');
@@ -414,6 +407,7 @@ const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
  if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===state.me.id);if(!item)throw Error('Resume unavailable');await signedPdf(item.storage_path,'matchpath-profiles');return}
+ if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
  if(action==='navigate'){state.page=target.dataset.page;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
@@ -488,6 +482,27 @@ async function handleClick(target){
   state.bulkSubmitApps=rows.map(x=>x.app.id);
   openDialog('Confirm selected submissions','<p class="warning">Only confirm jobs that were genuinely submitted to the employer. Enter a confirmation/reference for each application.</p><form id="bulkSubmitForm">'+rows.map(x=>'<div class="field"><label for="bulk-ref-'+esc(x.app.id)+'">'+esc(x.job.job_title)+' · '+esc(x.job.company)+'</label><input id="bulk-ref-'+esc(x.app.id)+'" type="text" minlength="3" required placeholder="Employer confirmation / reference"></div>').join('')+area('bulkSubmissionNotes','Shared submission note (optional)')+'<button class="btn" type="submit">Confirm '+rows.length+' Submitted</button></form>');
   return;
+ }
+ if(action==='view-ai-prompt'){
+  if(!canOperateUi())throw Error('This workspace is not authorized to view the AI search prompt.');
+  const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+  target.textContent='Loading prompt…';
+  const response=await fetch(config.supabaseUrl+'/functions/v1/run-job-search',{
+   method:'POST',
+   headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+   body:JSON.stringify({customer_id:customer,preview_only:true}),
+   signal:AbortSignal.timeout(30000)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.ok)throw Error(result.error||'Could not load AI prompt preview.');
+  state.aiPromptPreview=result.full_prompt||'';
+  openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer. Unsaved form edits are not included until you save them.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy Prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
+  return;
+ }
+ if(action==='copy-ai-prompt'){
+  if(!state.aiPromptPreview)throw Error('No prompt is loaded.');
+  await navigator.clipboard.writeText(state.aiPromptPreview);
+  notice('AI search prompt copied.');return;
  }
  if(action==='run-ai-search'){
   if(!canOperateUi())throw Error('This workspace is not authorized to run job searches.');
