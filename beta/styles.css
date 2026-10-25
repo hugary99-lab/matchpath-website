@@ -82,3 +82,10 @@
 .profile-panel.is-readonly select:disabled{background:#f6f8f9;color:#405b68;border-color:#dbe4e8;opacity:1;cursor:default}
 .profile-panel.is-editing{border-color:#8fc8bd;box-shadow:0 0 0 2px rgba(28,130,110,.08)}
 .profile-edit-icon.active{background:#e7f4f1;border-color:#8fc8bd;color:#126653}
+
+
+/* Icon-only field tools */
+.field-tool-icon{width:28px;height:28px;padding:0;display:inline-grid;place-items:center;border:1px solid var(--edge);border-radius:7px;background:#fff;color:var(--teal);font-size:15px;line-height:1;cursor:pointer}
+.field-tool-icon:hover{background:#eef8f6}
+.field-tool-icon:disabled{opacity:.45;cursor:not-allowed}
+.field-tool-icon.large{width:34px;height:34px;font-size:17px}
