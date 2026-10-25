@@ -117,3 +117,12 @@
 .analysis-summary h3{margin:0 0 6px}
 .stack.wrap{flex-wrap:wrap}
 @media(max-width:760px){.analysis-arrow{display:none}.analysis-flow{align-items:stretch}.analysis-step{width:100%;border-radius:10px}}
+
+
+/* Resume strengthening guidance */
+.resume-strengthening-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.resume-strengthening-item{display:flex;flex-direction:column;gap:3px;padding:9px 10px;border:1px solid #ead9aa;border-radius:9px;background:#fff9ea}
+.resume-strengthening-item strong{font-size:12px;color:#6a5315}
+.resume-strengthening-item span{font-size:12px;color:#5b6570}
+.resume-strengthening-item em{font-size:12px;color:#7b5f14;font-style:normal}
+.resume-strengthening-item.legacy{background:#fbfaf4}
