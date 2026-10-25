@@ -109,16 +109,42 @@ function applicationsPage(){
 function docButtons(app){return ['resume','cover_letter'].map(k=>{let d=appliedDocFor(app.id,k);return d?'<button class="btn outline small" data-action="download" data-doc="'+esc(d.id)+'">'+(k==='resume'?'Resume':'Cover letter')+' v'+d.version+' ↓</button>':'<span class="badge warn">'+(k==='resume'?'Resume':'Cover letter')+' pending</span>'}).join('')}
 function customerProfileViewPage(){
  const p=currentProfile()||{},id=currentCustomer();
- const extra=state.account.role==='customer'?'':customerPicker();
- let html=head('Customer profile',customerName(id)+' · Profile & Search Preferences','Read-only view of the saved customer profile used by MatchPath AI Job Search.',extra);
+ const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
+ const selectedObjectives=String(p.career_goals||'').split('\n').filter(x=>x.startsWith('• ')).map(x=>x.slice(2));
+ const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
+ const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
+ const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
+ const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
+ const extra=state.account.role==='customer'
+   ?'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'
+   :'<div class="stack profile-heading-tools">'+customerPicker()+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
+ let html=head('User profile review',customerName(id)+' · Profile & Search Preferences','Review the saved customer profile used by MatchPath AI Job Search. Fields are read-only until an Admin selects Edit.',extra);
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
- const employment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
- const compensation=[p.salary_min?'Minimum '+money(p.salary_min,p.salary_currency||'CAD'):null,p.salary_target?'Target '+money(p.salary_target,p.salary_currency||'CAD'):null].filter(Boolean).join(' · ');
- html+='<div class="profile-view-grid">'+
- '<section class="card profile-view-card"><div class="profile-view-head"><h2>Search focus</h2>'+profileEditIcon('search-focus','Search focus')+'</div><dl class="profile-readonly"><dt>Target roles and seniority</dt><dd>'+profileText(p.target_roles)+'</dd><dt>Adjacent / transferable roles</dt><dd>'+profileText(p.transferable_roles)+'</dd><dt>Industries and sectors</dt><dd>'+profileText(p.industries)+'</dd><dt>Employment type</dt><dd>'+(employment.length?employment.map(x=>'<span class="badge neutral">'+esc(x)+'</span>').join(' '):'Not specified')+'</dd></dl></section>'+
- '<section class="card profile-view-card"><div class="profile-view-head"><h2>Location, work & compensation</h2>'+profileEditIcon('location-comp','Location, work and compensation')+'</div><dl class="profile-readonly"><dt>Preferred locations</dt><dd>'+profileText(p.preferred_locations)+'</dd><dt>Relocation flexibility</dt><dd>'+profileText(p.relocation_preferences)+'</dd><dt>Work arrangement</dt><dd>'+profileText(p.work_preference)+'</dd><dt>Compensation</dt><dd>'+esc(compensation||'Not specified')+'</dd><dt>Benefits / pension</dt><dd>'+profileText(p.pension_preferences)+'</dd></dl></section>'+
- '<section class="card profile-view-card"><div class="profile-view-head"><h2>Career priorities</h2>'+profileEditIcon('career-priorities','Career priorities')+'</div><dl class="profile-readonly"><dt>Career goals and priorities</dt><dd>'+profileText(p.career_goals)+'</dd></dl></section>'+
- '<section class="card profile-view-card"><div class="profile-view-head"><h2>AI search controls</h2>'+profileEditIcon('ai-search-controls','AI search controls')+'</div><dl class="profile-readonly"><dt>LinkedIn public profile</dt><dd>'+profileText(p.linkedin_url)+'</dd><dt>Hard exclusions</dt><dd>'+profileText(p.exclusions)+'</dd><dt>Additional AI search instructions</dt><dd>'+profileText(p.search_instructions)+'</dd><dt>Minimum fit score</dt><dd>'+esc(p.min_fit_score??90)+'</dd><dt>Service preference</dt><dd>'+esc(p.service_tier==='full_service'?'Full Service':'DIY')+'</dd></dl><div class="stack"><button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div></section>'+
+ const ro=(label,value)=>'<div class="field readonly-field"><label>'+esc(label)+'</label><div class="readonly-control">'+profileText(value)+'</div></div>';
+ html+='<div class="profile-grid profile-review-grid">'+
+ '<section class="card profile-panel"><div class="profile-view-head"><h2>Search focus</h2>'+profileEditIcon('search-focus','Search focus')+'</div>'+
+ ro('Target roles and seniority',p.target_roles)+
+ ro('Adjacent / transferable roles',p.transferable_roles)+
+ ro('Industries and sectors',p.industries)+
+ '<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">Read only</span></div><div class="multi-check-grid readonly-checks">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" disabled '+(selectedEmployment.includes(x)?'checked':'')+'> '+esc(x)+'</label>').join('')+'</div></div>'+
+ '</section>'+
+ '<section class="card profile-panel"><div class="profile-view-head"><h2>Location, work & compensation</h2>'+profileEditIcon('location-comp','Location, work and compensation')+'</div>'+
+ ro('Preferred locations',p.preferred_locations)+
+ ro('Relocation flexibility',p.relocation_preferences)+
+ '<div class="form-row">'+ro('Work arrangement',p.work_preference)+ro('Minimum compensation',p.salary_min?money(p.salary_min,p.salary_currency||'CAD'):'Not specified')+'</div>'+
+ '<div class="form-row">'+ro('Currency',p.salary_currency||'CAD')+ro('Target compensation',p.salary_target?money(p.salary_target,p.salary_currency||'CAD'):'Not specified')+'</div>'+
+ ro('Benefits / pension preferences',p.pension_preferences)+
+ '</section>'+
+ '<section class="card profile-panel"><div class="profile-view-head"><h2>Career priorities</h2>'+profileEditIcon('career-priorities','Career priorities')+'</div>'+
+ '<div class="profile-objectives readonly-objectives">'+objectiveOptions.map(o=>'<label><input type="checkbox" disabled '+(selectedObjectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+
+ ro('Career destination, priorities and timeline',goalsFree)+
+ '</section>'+
+ '<section class="card profile-panel"><div class="profile-view-head"><h2>AI search controls</h2>'+profileEditIcon('ai-search-controls','AI search controls')+'</div>'+
+ ro('LinkedIn public profile URL',p.linkedin_url)+
+ ro('Mandatory requirements / hard exclusions',p.exclusions)+
+ ro('Additional AI search instructions',p.search_instructions)+
+ '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
+ '</section>'+
  '</div>';
  return html;
 }
