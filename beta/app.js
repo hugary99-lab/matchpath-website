@@ -150,6 +150,12 @@ function customerProfileViewPage(){
 }
 function profilePage(){
  const p=currentProfile()||{},id=currentCustomer(),operator=state.account?.role!=='customer';
+ const active=state.profileEditSection||null;
+ const isEditing=section=>active===section;
+ const editIcon=(section,label)=>'<button class="icon-btn profile-edit-icon '+(isEditing(section)?'active':'')+'" type="button" data-action="edit-profile-section" data-section="'+esc(section)+'" aria-label="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'" title="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'">✎</button>';
+ const saveButton=(section,label)=>isEditing(section)?'<div class="profile-section-actions"><button class="btn small" type="submit" data-section="'+esc(section)+'">'+esc(label)+'</button></div>':'';
+ const pArea=(section,id,label,value='',hint='')=>isEditing(section)?area(id,label,value,hint):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><textarea id="'+esc(id)+'" disabled>'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
+ const pField=(section,id,label,value='',type='text',extra='')=>isEditing(section)?field(id,label,value,type,extra):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><input id="'+esc(id)+'" type="'+esc(type)+'" value="'+esc(value)+'" disabled></div>';
  const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
  const objectives=String(p.career_goals||'').split('\n').filter(x=>x.startsWith('• ')).map(x=>x.slice(2));
  const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
@@ -158,17 +164,42 @@ function profilePage(){
  const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
  const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
  const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
- const saveButton=(label)=>'<div class="profile-section-actions"><button class="btn small" type="submit">'+esc(label)+'</button></div>';
  const headingExtra=operator
    ?'<div class="stack profile-heading-tools">'+customerPicker()+'<button class="btn outline small" type="button" data-action="update-ai-prompt">Update AI Search Prompt</button><button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
    :'<button class="btn outline small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>';
- let html=head(operator?'Customer setup':'Customer onboarding',operator?customerName(id)+' · Profile & Search Preferences':'Build your career search',operator?'Update the selected customer\'s search profile and preferences used by MatchPath AI Job Search.':'Tell us where you are today and where you want to go. Your uploaded resumes are references for one verified career profile—not separate job-search tracks.',headingExtra);
+ let html=head(operator?'Customer setup':'Customer setup',customerName(id)+' · Profile & Search Preferences','Profile sections are read-only by default. Select the pencil icon to edit one section at a time.',headingExtra);
  html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
- '<section id="profile-section-search-focus" class="card profile-panel"><h2>Search focus</h2>'+area('target_roles','Target roles and seniority',p.target_roles)+area('transferable_roles','Adjacent / transferable roles',p.transferable_roles)+area('industries','Industries and sectors',p.industries)+'<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">Select all that apply</span></div><div class="multi-check-grid">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" name="employment_type" value="'+esc(x)+'" '+(selectedEmployment.includes(x)?'checked':'')+'> '+esc(x)+'</label>').join('')+'</div></div>'+saveButton('Save Search Focus')+'</section>'+
- '<section id="profile-section-location-comp" class="card profile-panel"><h2>Location, work & compensation</h2>'+area('preferred_locations','Preferred locations',p.preferred_locations)+area('relocation_preferences','Relocation flexibility',p.relocation_preferences)+'<div class="form-row"><div class="field"><label for="work_preference">Work arrangement</label><select id="work_preference">'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_min','Minimum compensation',p.salary_min||'','number','min="0"')+'</div><div class="form-row"><div class="field"><label for="salary_currency">Currency</label><select id="salary_currency">'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+field('salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+area('pension_preferences','Benefits / pension preferences',p.pension_preferences)+saveButton('Save Location & Compensation')+'</section>'+
- '<section id="profile-section-career-priorities" class="card profile-panel"><h2>Career priorities</h2><div class="profile-objectives">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+'> '+esc(o)+'</label>').join('')+'</div>'+area('career_goals_detail','Career destination, priorities and timeline',goalsFree)+saveButton('Save Career Priorities')+'</section>'+
- '<section id="profile-section-ai-search-controls" class="card profile-panel"><h2>AI search controls</h2>'+field('linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+area('exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+area('search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+'<div class="form-row">'+field('min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+'<div class="field"><label for="service_tier">Service preference</label><select id="service_tier" '+(operator&&state.account.role!=='admin'?'disabled title="Only Admin can change service tier"':'')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+saveButton('Save AI Search Controls')+'</section>'+
- (!operator?'<section class="card profile-panel profile-span"><h2>Reference resumes</h2><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple><span class="hint">Each PDF up to 6 MB. Originals are preserved privately.</span></div><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div>'+saveButton('Save Reference Resumes')+'</section>':'')+
+ '<section id="profile-section-search-focus" class="card profile-panel '+(isEditing('search-focus')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Search focus</h2>'+editIcon('search-focus','Search focus')+'</div>'+
+ pArea('search-focus','target_roles','Target roles and seniority',p.target_roles)+
+ pArea('search-focus','transferable_roles','Adjacent / transferable roles',p.transferable_roles)+
+ pArea('search-focus','industries','Industries and sectors',p.industries)+
+ '<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">'+(isEditing('search-focus')?'Select all that apply':'Read only')+'</span></div><div class="multi-check-grid '+(isEditing('search-focus')?'':'readonly-checks')+'">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" name="employment_type" value="'+esc(x)+'" '+(selectedEmployment.includes(x)?'checked':'')+' '+(isEditing('search-focus')?'':'disabled')+'> '+esc(x)+'</label>').join('')+'</div></div>'+
+ saveButton('search-focus','Save Search Focus')+
+ '</section>'+
+ '<section id="profile-section-location-comp" class="card profile-panel '+(isEditing('location-comp')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Location, work & compensation</h2>'+editIcon('location-comp','Location, work and compensation')+'</div>'+
+ pArea('location-comp','preferred_locations','Preferred locations',p.preferred_locations)+
+ pArea('location-comp','relocation_preferences','Relocation flexibility',p.relocation_preferences)+
+ '<div class="form-row"><div class="field"><div class="field-label-row"><label for="work_preference">Work arrangement</label><span class="hint">'+(isEditing('location-comp')?'':'Read only')+'</span></div><select id="work_preference" '+(isEditing('location-comp')?'':'disabled')+'>'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+ pField('location-comp','salary_min','Minimum compensation',p.salary_min||'','number','min="0"')+'</div>'+
+ '<div class="form-row"><div class="field"><div class="field-label-row"><label for="salary_currency">Currency</label><span class="hint">'+(isEditing('location-comp')?'':'Read only')+'</span></div><select id="salary_currency" '+(isEditing('location-comp')?'':'disabled')+'>'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
+ pField('location-comp','salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+
+ pArea('location-comp','pension_preferences','Benefits / pension preferences',p.pension_preferences)+
+ saveButton('location-comp','Save Location & Compensation')+
+ '</section>'+
+ '<section id="profile-section-career-priorities" class="card profile-panel '+(isEditing('career-priorities')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Career priorities</h2>'+editIcon('career-priorities','Career priorities')+'</div>'+
+ '<div class="profile-objectives '+(isEditing('career-priorities')?'':'readonly-objectives')+'">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+' '+(isEditing('career-priorities')?'':'disabled')+'> '+esc(o)+'</label>').join('')+'</div>'+
+ pArea('career-priorities','career_goals_detail','Career destination, priorities and timeline',goalsFree)+
+ saveButton('career-priorities','Save Career Priorities')+
+ '</section>'+
+ '<section id="profile-section-ai-search-controls" class="card profile-panel '+(isEditing('ai-search-controls')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>AI search controls</h2>'+editIcon('ai-search-controls','AI search controls')+'</div>'+
+ pField('ai-search-controls','linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
+ pArea('ai-search-controls','exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
+ pArea('ai-search-controls','search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+
+ '<div class="form-row">'+pField('ai-search-controls','min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+
+ '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
+ saveButton('ai-search-controls','Save AI Search Controls')+
+ '</section>'+
+ (!operator?'<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Reference resumes</h2>'+editIcon('reference-resumes','Reference resumes')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+(isEditing('reference-resumes')?'':'disabled')+'><span class="hint">Each PDF up to 6 MB. Originals are preserved privately.</span></div><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div>'+saveButton('reference-resumes','Save Reference Resumes')+'</section>':'')+
  '</div></form>';
  return html;
 }
@@ -560,7 +591,7 @@ async function handleClick(target){
  if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
- if(action==='navigate'){state.page=target.dataset.page;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
+ if(action==='navigate'){state.page=target.dataset.page;if(state.page==='profile')state.profileEditSection=null;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
  if(action==='expand-field'){openExpandedEditor(target.dataset.field,false);return}
  if(action==='voice-field'){openExpandedEditor(target.dataset.field,true);return}
  if(action==='start-expanded-voice'){
@@ -574,7 +605,10 @@ async function handleClick(target){
   stopVoiceInput();source.value=editor.value;source.dispatchEvent(new Event('input',{bubbles:true}));closeDialog();return;
  }
  if(action==='edit-profile-section'){
-  if(state.account?.role!=='admin')throw Error('Administrator access required to edit customer profile sections.');
+  const role=state.account?.role;
+  const customer=currentCustomer();
+  const authorized=role==='customer'?customer===state.me.id:(role==='admin'||role==='staff');
+  if(!authorized)throw Error('You are not authorized to edit this customer profile.');
   state.profileEditSection=target.dataset.section||null;
   state.page='profile';
   render();
@@ -800,7 +834,7 @@ async function handleSubmit(form){
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
    const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
    if(error)throw error;
-   await loadData(state.me);state.page='profile';render();notice('Customer profile and search preferences saved.');return;
+   state.profileEditSection=null;await loadData(state.me);state.page='profile';render();notice('Customer profile and search preferences saved.');return;
   }
   const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
   if(error)throw error;
@@ -816,7 +850,7 @@ async function handleSubmit(form){
    if(metadataError)throw Error('File stored, but library registration failed: '+errorMsg(metadataError));
    uploaded++;
   }
-  await loadData();notice('Onboarding saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'')+' AI career profiling has not started.');return;
+  state.profileEditSection=null;await loadData();state.page='profile';render();notice('Profile saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'') );return;
  }
  if(type==='bulkSubmitForm'){
   const ids=[...(state.bulkSubmitApps||[])];
