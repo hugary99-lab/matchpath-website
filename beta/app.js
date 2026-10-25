@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="field-tool-icon" type="button" data-action="expand-field" data-field="'+esc(id)+'" aria-label="Expand editor" title="Expand editor">⛶</button><button class="field-tool-icon" type="button" data-action="voice-field" data-field="'+esc(id)+'" aria-label="Voice input" title="Voice input">🎤</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],candidateEvidence:[],searchStrategies:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -41,12 +41,12 @@ function renderAuth(mode='login'){
 function navItems(){
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
+  :[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
@@ -66,6 +66,12 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+function latestCandidateEvidence(customer=currentCustomer()){return state.candidateEvidence.filter(x=>x.customer_id===customer).sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
+function latestSearchStrategy(customer=currentCustomer()){return state.searchStrategies.filter(x=>x.customer_id===customer).sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
+function currentSearchStrategy(customer=currentCustomer()){return state.searchStrategies.filter(x=>x.customer_id===customer&&x.status==='current').sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
+function candidateEvidenceCurrent(ev=latestCandidateEvidence(),customer=currentCustomer()){if(!ev)return false;const current=state.referenceResumes.filter(r=>r.customer_id===customer).map(r=>String(r.id)).sort(),used=(ev.source_resume_ids||[]).map(String).sort();return current.length===used.length&&current.every((id,i)=>id===used[i])}
+function searchStrategyCurrent(strategy=latestSearchStrategy(),customer=currentCustomer()){if(!strategy)return false;const ev=latestCandidateEvidence(customer),p=state.profiles.find(x=>x.customer_id===customer);return !!ev&&String(strategy.source_evidence_id)===String(ev.id)&&new Date(strategy.source_profile_updated_at||0).getTime()===new Date(p?.updated_at||0).getTime()}
+
 function aiPromptNeedsUpdate(p=currentProfile()){
  if(!p)return false;
  if(!p.ai_search_prompt||!p.ai_prompt_profile_updated_at)return true;
@@ -181,6 +187,10 @@ function customerProfileViewPage(){
  '</section>'+
  '</div></form>';
  return html;
+}
+function profileAnalysisPage(){
+ const id=currentCustomer();
+ return head('Profile Analysis',customerName(id)+' · Candidate Evidence & AI Search Strategy','Analyze resumes, build Candidate Evidence, and create a versioned AI Search Strategy.',state.account.role==='customer'?'':customerPicker())+'<section class="card section"><h2>Profile Analysis</h2><p class="muted">Workflow loading...</p></section>';
 }
 function profilePage(){
  const p=currentProfile()||{},id=currentCustomer(),operator=state.account?.role!=='customer';
@@ -403,12 +413,12 @@ function render(){
  buildNav();
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  const allowed=isDiyCustomer()?['overview','import','customer-profile','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','customer-profile','profile'];
+  const allowed=isDiyCustomer()?['overview','import','customer-profile','profile-analysis','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','documents','profile']:['overview','matches','applications','customer-profile','profile-analysis','profile'];
   if(!allowed.includes(state.page))state.page='overview';
  }
- if(r!=='customer'&&!['overview','import','customer-profile','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents','profile',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
+ if(r!=='customer'&&!['overview','import','customer-profile','profile-analysis','queue-new','queue-approved','queue-submitted','queue-skipped','queue-all','workbench','documents','profile',...(r==='admin'?['admin']:[])].includes(state.page))state.page='overview';
  $('#mainNav').querySelectorAll('.nav-button').forEach(b=>b.classList.toggle('active',b.dataset.page===state.page));
- const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,'customer-profile':customerProfileViewPage,profile:profilePage,import:importPage,'queue-new':newResultsPage,'queue-approved':approvedResultsPage,'queue-submitted':submittedResultsPage,'queue-skipped':skippedResultsPage,'queue-all':allResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
+ const pageMap={overview:dashboard,matches:matchesPage,applications:applicationsPage,'customer-profile':customerProfileViewPage,'profile-analysis':profileAnalysisPage,profile:profilePage,import:importPage,'queue-new':newResultsPage,'queue-approved':approvedResultsPage,'queue-submitted':submittedResultsPage,'queue-skipped':skippedResultsPage,'queue-all':allResultsPage,workbench:workbenchPage,documents:documentsPage,admin:adminPage};
  $('#page').innerHTML=pageMap[state.page]();
 }
 async function loadData(knownUser=null){
@@ -436,14 +446,14 @@ async function loadData(knownUser=null){
  const account=records[0];
  if(!account)throw Error('No account record returned.');
  state.account=account;
- const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes'];
+ const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes','candidate_evidence_versions','search_strategy_versions'];
  const tables=await Promise.all(keys.map(async table=>{
    const url=config.supabaseUrl+'/rest/v1/'+table+'?select=*&limit='+(table==='jobs'?1000:500);
    const response=await within(fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Loading '+table,12000);
    if(!response.ok)throw Error('Loading '+table+' HTTP '+response.status+': '+(await response.text()).slice(0,250));
    return await response.json();
  }));
- [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes]=tables;
+ [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes,state.candidateEvidence,state.searchStrategies]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.apps.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.runs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
