@@ -137,6 +137,9 @@ function customerProfileViewPage(){
  const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
  const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
  const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
+ const referenceResumes=state.referenceResumes.filter(r=>r.customer_id===id);
+ const referenceResumeCount=referenceResumes.length;
+ const referenceResumeRemaining=Math.max(0,5-referenceResumeCount);
  const extra=state.account.role==='customer'
    ?'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'
    :'<div class="stack profile-heading-tools">'+customerPicker()+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
@@ -225,7 +228,7 @@ function profilePage(){
  '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  saveButton('ai-search-controls','Save AI Search Controls')+
  '</section>'+
- '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Original / Reference Resumes</h2>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':'Each PDF up to 6 MB. Originals are preserved privately for tailoring and verification.')+'</span></div><div class="reference-resume-list">'+(state.referenceResumes.filter(r=>r.customer_id===id).length?state.referenceResumes.filter(r=>r.customer_id===id).map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes'))?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
+ '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI Search Prompt runs, these PDFs may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
  '</div></form>';
  return html;
 }
@@ -904,15 +907,19 @@ async function handleSubmit(form){
    }
   }
 
-  if(pendingFiles.length>10)throw Error('Upload up to 10 reference resumes at a time.');
+  const existingResumeCount=state.referenceResumes.filter(r=>r.customer_id===customer).length;
+  if(existingResumeCount+pendingFiles.length>5)throw Error('A customer can have at most 5 original/reference resumes. You can upload '+Math.max(0,5-existingResumeCount)+' more.');
   let uploaded=0;
   for(const file of pendingFiles){
    await validatePdf(file);
    const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
    const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
    if(e)throw Error('Profile saved, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
-   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:customer,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});
-   if(metadataError)throw Error('Resume file stored, but library registration failed: '+errorMsg(metadataError));
+   const {error:metadataError}=await state.sb.rpc('register_reference_resume',{p_customer:customer,p_storage_path:path,p_original_filename:file.name.slice(0,240),p_size_bytes:file.size});
+   if(metadataError){
+    await state.sb.storage.from('matchpath-profiles').remove([path]).catch(()=>{});
+    throw Error('Resume upload could not be registered: '+errorMsg(metadataError));
+   }
    uploaded++;
   }
 
