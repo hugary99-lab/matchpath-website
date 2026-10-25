@@ -63,3 +63,13 @@
 .profile-readonly dd .badge{margin:2px 4px 2px 0}
 .profile-entry{padding:18px}
 @media(max-width:860px){.profile-view-grid{grid-template-columns:1fr}}
+
+
+/* User Profile Review mirrors Customer Setup but remains read-only */
+.profile-review-grid .profile-panel{min-height:100%}
+.readonly-field{margin-bottom:10px}
+.readonly-field label{font-weight:700;font-size:12px;color:#456271}
+.readonly-control{min-height:39px;padding:9px 10px;border:1px solid #d8e3e8;border-radius:9px;background:#f8fafb;color:#294554;line-height:1.45}
+.readonly-checks{background:#f8fafb}
+.readonly-checks input,.readonly-objectives input{accent-color:var(--teal)}
+.readonly-checks input:disabled,.readonly-objectives input:disabled{opacity:1}
