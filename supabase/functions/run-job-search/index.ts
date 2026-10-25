@@ -168,8 +168,7 @@ Deno.serve(async (req: Request) => {
         }
         resumeInputs.push({
           type: "input_file",
-          file_url: signed.signedUrl,
-          filename: clean(row.original_filename, 240) || "resume.pdf",
+          file_url: signed.signedUrl
         });
       }
 
