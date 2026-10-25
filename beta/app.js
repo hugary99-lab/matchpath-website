@@ -225,7 +225,7 @@ function profilePage(){
  '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  saveButton('ai-search-controls','Save AI Search Controls')+
  '</section>'+
- (!operator?'<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Reference resumes</h2>'+editIcon('reference-resumes','Reference resumes')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+(isEditing('reference-resumes')?'':'disabled')+'><span class="hint">Each PDF up to 6 MB. Originals are preserved privately.</span></div><div class="hint">'+(state.referenceResumes.filter(r=>r.customer_id===state.me.id).length?state.referenceResumes.filter(r=>r.customer_id===state.me.id).map(r=>'<div>'+esc(r.original_filename)+' · '+fmtDate(r.created_at)+' <button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'No resumes uploaded yet.')+'</div>'+saveButton('reference-resumes','Save Reference Resumes')+'</section>':'')+
+ '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Original / Reference Resumes</h2>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':'Each PDF up to 6 MB. Originals are preserved privately for tailoring and verification.')+'</span></div><div class="reference-resume-list">'+(state.referenceResumes.filter(r=>r.customer_id===id).length?state.referenceResumes.filter(r=>r.customer_id===id).map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes'))?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
  '</div></form>';
  return html;
 }
@@ -613,7 +613,7 @@ async function downloadSelectedResumes(jobIds){
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
- if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===state.me.id);if(!item)throw Error('Resume unavailable');await signedPdf(item.storage_path,'matchpath-profiles');return}
+ if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===currentCustomer());if(!item)throw Error('Resume unavailable for this customer');await signedPdf(item.storage_path,'matchpath-profiles');return}
  if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
@@ -884,32 +884,44 @@ async function handleSubmit(form){
  }
  if(type==='profileForm'){
   const values=profileFormValues();
-  const operator=state.account.role!=='customer';
-  const pendingFiles=state.account.role==='customer'?[...($('#referenceFiles')?.files||[])]:[];
-  if(!profileValuesChanged(values)&&!pendingFiles.length){
-   state.profileEditSection=null;render();notice('No profile changes to save. AI search prompt remains up to date.');return;
+  const role=state.account.role;
+  const operator=role!=='customer';
+  const customer=currentCustomer();if(!customer)throw Error('Customer unavailable.');
+  const canUploadReference=role==='admin'||role==='customer';
+  const pendingFiles=canUploadReference?[...($('#referenceFiles')?.files||[])]:[];
+  const changed=profileValuesChanged(values);
+  if(!changed&&!pendingFiles.length){
+   state.profileEditSection=null;render();notice('No changes to save.');return;
   }
-  if(operator){
-   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
-   const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
-   if(error)throw error;
-   state.profileEditSection=null;await loadData(state.me);state.page='profile';render();notice('Customer profile and search preferences saved.');return;
+
+  if(changed){
+   if(operator){
+    const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
+    if(error)throw error;
+   }else{
+    const {error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
+    if(error)throw error;
+   }
   }
-  const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
-  if(error)throw error;
-  const files=pendingFiles;
-  if(files.length>10)throw Error('Upload up to 10 reference resumes at a time.');
+
+  if(pendingFiles.length>10)throw Error('Upload up to 10 reference resumes at a time.');
   let uploaded=0;
-  for(const file of files){
+  for(const file of pendingFiles){
    await validatePdf(file);
-   const path=state.me.id+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
+   const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
    const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
-   if(e)throw Error('Saved preferences, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
-   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:state.me.id,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});
-   if(metadataError)throw Error('File stored, but library registration failed: '+errorMsg(metadataError));
+   if(e)throw Error('Profile saved, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
+   const {error:metadataError}=await state.sb.from('reference_resumes').insert({customer_id:customer,storage_path:path,original_filename:file.name.slice(0,240),size_bytes:file.size});
+   if(metadataError)throw Error('Resume file stored, but library registration failed: '+errorMsg(metadataError));
    uploaded++;
   }
-  state.profileEditSection=null;await loadData();state.page='profile';render();notice('Profile saved.'+(uploaded?' '+uploaded+' original reference resume(s) uploaded privately.':'') );return;
+
+  state.profileEditSection=null;
+  await loadData(state.me);
+  state.page='profile';
+  render();
+  notice((changed?'Customer profile saved.':'')+(uploaded?' '+uploaded+' original/reference resume'+(uploaded===1?'':'s')+' uploaded privately.':''));
+  return;
  }
  if(type==='bulkSubmitForm'){
   const ids=[...(state.bulkSubmitApps||[])];
