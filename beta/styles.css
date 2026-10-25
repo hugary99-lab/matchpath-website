@@ -47,3 +47,19 @@
 .profile-heading-tools{justify-content:flex-end;align-items:flex-end}
 .profile-heading-tools>.field{margin:0}
 .profile-section-actions{display:flex;justify-content:flex-end;margin-top:8px;padding-top:10px;border-top:1px solid var(--edge)}
+
+
+/* Read-only customer profile */
+.profile-view-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+.profile-view-card{padding:18px}
+.profile-view-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.profile-view-head h2{margin:0;font-size:17px}
+.profile-edit-icon{width:32px;height:32px;display:inline-grid;place-items:center;border:1px solid var(--edge);border-radius:8px;background:#fff;color:var(--teal);font-size:18px;line-height:1}
+.profile-edit-icon:hover{background:#eef8f6}
+.profile-readonly{margin:0}
+.profile-readonly dt{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#6d8490;margin-top:12px}
+.profile-readonly dt:first-child{margin-top:0}
+.profile-readonly dd{margin:4px 0 0;color:#244453;line-height:1.45}
+.profile-readonly dd .badge{margin:2px 4px 2px 0}
+.profile-entry{padding:18px}
+@media(max-width:860px){.profile-view-grid{grid-template-columns:1fr}}
