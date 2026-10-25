@@ -175,9 +175,9 @@ function customerProfileViewPage(){
  '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
  '<div class="profile-prompt-state"><strong>'+(p.ai_search_prompt?'AI search prompt exists':'AI search prompt not created yet')+'</strong><span class="hint">'+(promptNeedsUpdate?(p.ai_search_prompt?'Profile or reference resumes changed. Update the AI search prompt before the next search.':'Create the AI search prompt from this profile and its original/reference resumes.'):'AI search prompt is current for this profile.')+'</span></div>'+
  '</section>'+
- '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,application/pdf" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">⬆ Upload resume</button></div>':'')+'</div>'+
+ '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">⬆ Upload resume</button></div>':'')+'</div>'+
  '<p class="muted">These source resumes help MatchPath verify experience and improve the AI search prompt. They are not sent on every job search.</p>'+
- '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon" aria-hidden="true">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can upload up to 5 PDF resumes directly here.</div>')+'</div>'+
+ '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon" aria-hidden="true">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can upload up to 5 PDF or Word resumes directly here.</div>')+'</div>'+
  '</section>'+
  '</div></form>';
  return html;
@@ -240,7 +240,7 @@ function profilePage(){
  '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  saveButton('ai-search-controls','Save AI Search Controls')+
  '</section>'+
- '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI Search Prompt runs, these PDFs may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
+ '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF or Word resumes</label><input id="referenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF or Word resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI Search Prompt runs, these resume files may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
  '</div></form>';
  return html;
 }
@@ -562,9 +562,9 @@ async function uploadReferenceResumes(customer,files){
  if(existingCount+list.length>5)throw Error('A customer can have at most 5 original/reference resumes. You can upload '+Math.max(0,5-existingCount)+' more.');
  let uploaded=0;
  for(const file of list){
-  await validatePdf(file);
-  const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
-  const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
+  const validated=await validateResumeFile(file);
+  const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.'+validated.extension;
+  const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:validated.contentType,upsert:false});
   if(e)throw Error('Resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
   const {error:metadataError}=await state.sb.rpc('register_reference_resume',{p_customer:customer,p_storage_path:path,p_original_filename:file.name.slice(0,240),p_size_bytes:file.size});
   if(metadataError){
@@ -1021,7 +1021,7 @@ async function validatePdf(file){
  if(!file||file.size<10||file.size>6*1024*1024)throw Error('PDF must be 10 bytes–6 MB');
  if(file.name&&!/\.pdf$/i.test(file.name))throw Error('Please select a PDF file.');
  const probe=new Uint8Array(await file.slice(0,Math.min(1024,file.size)).arrayBuffer());
- const signature=[0x25,0x50,0x44,0x46,0x2d]; // %PDF-
+ const signature=[0x25,0x50,0x44,0x46,0x2d];
  let found=false;
  for(let i=0;i<=probe.length-signature.length;i++){
   let match=true;
@@ -1029,6 +1029,36 @@ async function validatePdf(file){
   if(match){found=true;break}
  }
  if(!found)throw Error('This file does not contain a valid PDF signature. If it opens as a PDF on your computer, re-save or export it as PDF and try again.');
+}
+async function validateResumeFile(file){
+ if(!file||file.size<10||file.size>6*1024*1024)throw Error('Resume file must be 10 bytes–6 MB.');
+ const name=String(file.name||'');
+ const ext=(name.match(/\.([^.]+)$/)?.[1]||'').toLowerCase();
+ if(!['pdf','doc','docx'].includes(ext))throw Error('Resume must be a PDF, DOC, or DOCX file.');
+ const probe=new Uint8Array(await file.slice(0,Math.min(1024,file.size)).arrayBuffer());
+ if(ext==='pdf'){
+  const sig=[0x25,0x50,0x44,0x46,0x2d];
+  let found=false;
+  for(let i=0;i<=probe.length-sig.length;i++){
+   let match=true;
+   for(let j=0;j<sig.length;j++){if(probe[i+j]!==sig[j]){match=false;break}}
+   if(match){found=true;break}
+  }
+  if(!found)throw Error('This file does not contain a valid PDF signature.');
+ }
+ if(ext==='docx'){
+  const zipOk=probe.length>=4&&probe[0]===0x50&&probe[1]===0x4b&&[0x03,0x05,0x07].includes(probe[2])&&[0x04,0x06,0x08].includes(probe[3]);
+  if(!zipOk)throw Error('This DOCX file does not contain a valid Word document signature.');
+ }
+ if(ext==='doc'){
+  const ole=[0xd0,0xcf,0x11,0xe0,0xa1,0xb1,0x1a,0xe1];
+  const oleOk=ole.every((v,i)=>probe[i]===v);
+  if(!oleOk)throw Error('This DOC file does not contain a valid legacy Word document signature.');
+ }
+ return {
+  extension:ext,
+  contentType:ext==='pdf'?'application/pdf':ext==='docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/msword'
+ };
 }
 async function uploadDocument(appId,kind,file){
  const app=byId(state.apps,appId);if(!app||app.customer_id!==currentCustomer()||!['approved','preparing','ready','blocked'].includes(app.status))throw Error('Application cannot receive documents');
