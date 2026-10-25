@@ -104,3 +104,16 @@
 
 .reference-resume-file{display:flex;align-items:center;gap:9px;min-width:0}
 .resume-file-icon{font-size:20px;line-height:1;flex:0 0 auto}
+
+
+/* Profile Analysis */
+.analysis-flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.analysis-step{display:flex;align-items:center;gap:8px;padding:9px 12px;border:1px solid var(--edge);border-radius:999px;background:#f8fafb;color:#617986}
+.analysis-step strong{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:#e8eef1;color:#46616d;font-size:12px}
+.analysis-step.done{border-color:#9ccfc5;background:#eef8f6;color:#245d53}
+.analysis-step.done strong{background:#d6eee8;color:#145f52}
+.analysis-arrow{color:#8aa0aa;font-weight:700}
+.analysis-summary{margin-top:14px;padding:14px;border:1px solid var(--edge);border-radius:10px;background:#f8fafb}
+.analysis-summary h3{margin:0 0 6px}
+.stack.wrap{flex-wrap:wrap}
+@media(max-width:760px){.analysis-arrow{display:none}.analysis-flow{align-items:stretch}.analysis-step{width:100%;border-radius:10px}}
