@@ -721,6 +721,46 @@ async function handleClick(target){
   setTimeout(()=>document.getElementById(sectionId)?.scrollIntoView({behavior:'smooth',block:'start'}),0);
   return;
  }
+ if(action==='run-resume-analysis'){
+  const original=target.textContent;target.disabled=true;target.textContent='Analyzing resumes…';
+  try{
+   const result=await callProfileAnalysis('analyze_resumes');
+   await loadData(state.me);
+   state.page='profile-analysis';render();
+   notice('Resume Analysis complete. Candidate Evidence v'+(result.evidence?.version||'new')+' created.');
+  }finally{
+   if(target.isConnected){target.disabled=false;target.textContent=original}
+  }
+  return;
+ }
+ if(action==='build-search-strategy'){
+  const original=target.textContent;target.disabled=true;target.textContent='Building strategy…';
+  try{
+   const result=await callProfileAnalysis('build_strategy');
+   await loadData(state.me);
+   state.page='profile-analysis';render();
+   notice('AI Search Strategy v'+(result.strategy?.version||'new')+' created as a draft. Review and activate it when ready.');
+  }finally{
+   if(target.isConnected){target.disabled=false;target.textContent=original}
+  }
+  return;
+ }
+ if(action==='activate-search-strategy'){
+  const id=target.dataset.strategy;if(!id)throw Error('Search Strategy unavailable.');
+  if(!confirm('Activate this strategy as the live AI Search Prompt for future job searches?'))return;
+  target.disabled=true;target.textContent='Activating…';
+  await callProfileAnalysis('activate_strategy',{strategy_id:id});
+  await loadData(state.me);
+  state.page='profile-analysis';render();
+  notice('AI Search Strategy activated. Future job searches will use this strategy.');
+  return;
+ }
+ if(action==='view-strategy-prompt'){
+  const strategy=state.searchStrategies.find(x=>x.id===target.dataset.strategy&&x.customer_id===currentCustomer());
+  if(!strategy)throw Error('Search Strategy unavailable.');
+  openDialog('AI Search Strategy v'+strategy.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(strategy.status)+'</span><span class="badge neutral">'+esc(strategy.model||'configured model')+'</span></div><p class="hint">This prompt becomes the live AI Search Prompt after activation.</p><pre class="prompt-preview">'+esc(strategy.prompt_text||'')+'</pre><div class="stack"><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
+  return;
+ }
  if(action==='decision'){
   if(!confirm('Record this job as '+target.dataset.decision+'?'))return;
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
