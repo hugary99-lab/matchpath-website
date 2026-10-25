@@ -1019,8 +1019,16 @@ async function validateCsvFile(file){
 }
 async function validatePdf(file){
  if(!file||file.size<10||file.size>6*1024*1024)throw Error('PDF must be 10 bytes–6 MB');
- const top=await file.slice(0,5).text();
- if(top!=='%PDF-')throw Error('File is not a valid PDF header');
+ if(file.name&&!/\.pdf$/i.test(file.name))throw Error('Please select a PDF file.');
+ const probe=new Uint8Array(await file.slice(0,Math.min(1024,file.size)).arrayBuffer());
+ const signature=[0x25,0x50,0x44,0x46,0x2d]; // %PDF-
+ let found=false;
+ for(let i=0;i<=probe.length-signature.length;i++){
+  let match=true;
+  for(let j=0;j<signature.length;j++){if(probe[i+j]!==signature[j]){match=false;break}}
+  if(match){found=true;break}
+ }
+ if(!found)throw Error('This file does not contain a valid PDF signature. If it opens as a PDF on your computer, re-save or export it as PDF and try again.');
 }
 async function uploadDocument(appId,kind,file){
  const app=byId(state.apps,appId);if(!app||app.customer_id!==currentCustomer()||!['approved','preparing','ready','blocked'].includes(app.status))throw Error('Application cannot receive documents');
