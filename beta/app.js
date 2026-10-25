@@ -72,6 +72,47 @@ function currentSearchStrategy(customer=currentCustomer()){return state.searchSt
 function candidateEvidenceCurrent(ev=latestCandidateEvidence(),customer=currentCustomer()){if(!ev)return false;const current=state.referenceResumes.filter(r=>r.customer_id===customer).map(r=>String(r.id)).sort(),used=(ev.source_resume_ids||[]).map(String).sort();return current.length===used.length&&current.every((id,i)=>id===used[i])}
 function searchStrategyCurrent(strategy=latestSearchStrategy(),customer=currentCustomer()){if(!strategy)return false;const ev=latestCandidateEvidence(customer),p=state.profiles.find(x=>x.customer_id===customer);return !!ev&&String(strategy.source_evidence_id)===String(ev.id)&&new Date(strategy.source_profile_updated_at||0).getTime()===new Date(p?.updated_at||0).getTime()}
 
+function currentGeneralResumes(customer=currentCustomer()){return state.generalResumes.filter(x=>x.customer_id===customer&&x.status==='current').sort((a,b)=>String(a.category_name||'').localeCompare(String(b.category_name||'')))}
+function generalResumeLibraryCurrent(rows=currentGeneralResumes(),customer=currentCustomer()){
+ const ev=latestCandidateEvidence(customer),live=currentSearchStrategy(customer);
+ return !!ev&&!!live&&rows.length>0&&rows.every(x=>String(x.source_evidence_id)===String(ev.id)&&String(x.source_strategy_id)===String(live.id));
+}
+function generalResumeText(row){
+ const r=row?.resume_json||{},parts=[];
+ if(r.candidate_name)parts.push(String(r.candidate_name).toUpperCase());
+ if(Array.isArray(r.contact_lines)&&r.contact_lines.length)parts.push(r.contact_lines.join(' | '));
+ if(r.headline)parts.push('\n'+r.headline);
+ if(r.professional_summary)parts.push('\nPROFESSIONAL SUMMARY\n'+r.professional_summary);
+ if(Array.isArray(r.core_competencies)&&r.core_competencies.length)parts.push('\nCORE COMPETENCIES\n'+r.core_competencies.join(' • '));
+ if(Array.isArray(r.systems_tools)&&r.systems_tools.length)parts.push('\nSYSTEMS & TOOLS\n'+r.systems_tools.join(' • '));
+ if(Array.isArray(r.experience)&&r.experience.length){
+  parts.push('\nPROFESSIONAL EXPERIENCE');
+  r.experience.forEach(x=>{
+   parts.push('\n'+[x.title,x.employer].filter(Boolean).join(' — '));
+   const meta=[x.location,x.dates].filter(Boolean).join(' | ');if(meta)parts.push(meta);
+   (x.bullets||[]).forEach(b=>parts.push('• '+b));
+  });
+ }
+ if(Array.isArray(r.education)&&r.education.length)parts.push('\nEDUCATION\n'+r.education.join('\n'));
+ if(Array.isArray(r.certifications)&&r.certifications.length)parts.push('\nCERTIFICATIONS\n'+r.certifications.join('\n'));
+ (r.additional_sections||[]).forEach(s=>{if(s?.heading&&Array.isArray(s.items)&&s.items.length)parts.push('\n'+String(s.heading).toUpperCase()+'\n'+s.items.join('\n'));});
+ return parts.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+function generalResumePreviewHtml(row){
+ const r=row?.resume_json||{};
+ const list=a=>(Array.isArray(a)&&a.length?'<ul class="checklist">'+a.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<p class="muted">None listed</p>');
+ return '<div class="resume-preview-document">'+
+  '<div class="resume-preview-header"><h2>'+esc(r.candidate_name||customerName(row?.customer_id))+'</h2>'+(Array.isArray(r.contact_lines)&&r.contact_lines.length?'<p>'+r.contact_lines.map(esc).join(' · ')+'</p>':'')+(r.headline?'<h3>'+esc(r.headline)+'</h3>':'')+'</div>'+
+  (r.professional_summary?'<section><h3>Professional Summary</h3><p>'+esc(r.professional_summary)+'</p></section>':'')+
+  '<section><h3>Core Competencies</h3>'+list(r.core_competencies)+'</section>'+
+  (Array.isArray(r.systems_tools)&&r.systems_tools.length?'<section><h3>Systems & Tools</h3>'+list(r.systems_tools)+'</section>':'')+
+  '<section><h3>Professional Experience</h3>'+((r.experience||[]).map(x=>'<div class="resume-preview-role"><div class="space"><strong>'+esc(x.title||'')+'</strong><span>'+esc(x.dates||'')+'</span></div><div class="muted">'+esc(x.employer||'')+(x.location?' · '+esc(x.location):'')+'</div>'+list(x.bullets)+'</div>').join('')||'<p class="muted">No experience listed</p>')+'</section>'+
+  (Array.isArray(r.education)&&r.education.length?'<section><h3>Education</h3>'+list(r.education)+'</section>':'')+
+  (Array.isArray(r.certifications)&&r.certifications.length?'<section><h3>Certifications</h3>'+list(r.certifications)+'</section>':'')+
+  (r.additional_sections||[]).map(s=>'<section><h3>'+esc(s.heading||'Additional Information')+'</h3>'+list(s.items)+'</section>').join('')+
+ '</div>';
+}
+
 function aiPromptNeedsUpdate(p=currentProfile()){
  if(!p)return false;
  if(!p.ai_search_prompt||!p.ai_prompt_profile_updated_at)return true;
