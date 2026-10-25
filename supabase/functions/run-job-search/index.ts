@@ -68,7 +68,7 @@ Deno.serve(async (req: Request) => {
       return respond({ error: "Search instructions are empty. Complete the customer search profile first." }, 400);
     }
 
-    if (!canRunSearch && input.preview_only !== true) return respond({ error: "This customer is not authorized to run AI job search." }, 403);
+    if (!canRunSearch && input.preview_only !== true && input.improve_prompt !== true) return respond({ error: "This customer is not authorized to run AI job search." }, 403);
 
     const { data: existing } = await admin.from("jobs")
       .select("company,requisition_id,job_url")
