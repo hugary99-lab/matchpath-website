@@ -140,9 +140,13 @@ function customerProfileViewPage(){
  const referenceResumes=state.referenceResumes.filter(r=>r.customer_id===id);
  const referenceResumeCount=referenceResumes.length;
  const referenceResumeRemaining=Math.max(0,5-referenceResumeCount);
+ const promptNeedsUpdate=aiPromptNeedsUpdate(p);
+ const promptButton=promptNeedsUpdate
+   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI Search Prompt':'Create AI Search Prompt')+'</button>'
+   :'<button class="btn outline small" type="button" disabled title="AI search prompt matches the current saved profile and reference resumes">AI Prompt Up to Date</button>';
  const extra=state.account.role==='customer'
-   ?'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>'
-   :'<div class="stack profile-heading-tools">'+customerPicker()+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
+   ?'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
+   :'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
  let html=head('User profile review',customerName(id)+' · Profile & Search Preferences','Review the saved customer profile used by MatchPath AI Job Search. Fields are read-only until an Admin selects Edit.',extra);
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
  const ro=(label,value)=>'<div class="field readonly-field"><label>'+esc(label)+'</label><div class="readonly-control">'+profileText(value)+'</div></div>';
@@ -169,6 +173,7 @@ function customerProfileViewPage(){
  ro('Mandatory requirements / hard exclusions',p.exclusions)+
  ro('Additional AI search instructions',p.search_instructions)+
  '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
+ '<div class="profile-prompt-state"><strong>'+(p.ai_search_prompt?'AI search prompt exists':'AI search prompt not created yet')+'</strong><span class="hint">'+(promptNeedsUpdate?(p.ai_search_prompt?'Profile or reference resumes changed. Update the AI search prompt before the next search.':'Create the AI search prompt from this profile and its original/reference resumes.'):'AI search prompt is current for this profile.')+'</span></div>'+
  '</section>'+
  '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+profileEditIcon('reference-resumes','Original / Reference Resumes')+'</div>'+
  '<p class="muted">These source resumes help MatchPath verify experience and improve the AI search prompt. They are not sent on every job search.</p>'+
