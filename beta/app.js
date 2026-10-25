@@ -729,8 +729,13 @@ async function handleClick(target){
  if(action==='view-ai-prompt'){
   if(!canOperateUi())throw Error('This workspace is not authorized to view the AI search prompt.');
   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+  const originalLabel=target.textContent;
   target.textContent='Loading prompt…';
-  await showAiPromptPreview(customer);
+  try{
+   await showAiPromptPreview(customer);
+  }finally{
+   if(target.isConnected)target.textContent=originalLabel;
+  }
   return;
  }
  if(action==='update-ai-prompt'){
