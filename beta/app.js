@@ -41,12 +41,12 @@ function renderAuth(mode='login'){
 function navItems(){
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  if(isDiyCustomer())return [['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
+  :[['overview','Overview'],['customer-profile','User Profile Review'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
