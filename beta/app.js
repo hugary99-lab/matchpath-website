@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="btn ghost tiny" type="button" data-action="expand-field" data-field="'+esc(id)+'">Expand</button><button class="btn ghost tiny" type="button" data-action="voice-field" data-field="'+esc(id)+'">Voice</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -66,6 +66,28 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+function aiPromptNeedsUpdate(p=currentProfile()){
+ if(!p)return false;
+ if(!p.ai_search_prompt||!p.ai_prompt_profile_updated_at)return true;
+ const profileTime=new Date(p.updated_at||0).getTime(),promptProfileTime=new Date(p.ai_prompt_profile_updated_at||0).getTime();
+ return Number.isFinite(profileTime)&&Number.isFinite(promptProfileTime)?profileTime>promptProfileTime:true;
+}
+function profileValuesChanged(values,p=currentProfile()){
+ if(!p)return true;
+ const n=v=>String(v??'').trim();
+ const pairs=[
+  ['target_roles',values.target_roles,p.target_roles],['career_goals',values.career_goals,p.career_goals],
+  ['preferred_locations',values.preferred_locations,p.preferred_locations],['salary_min',values.salary_min,p.salary_min],
+  ['work_preference',values.work_preference,p.work_preference],['exclusions',values.exclusions,p.exclusions],
+  ['search_instructions',values.search_instructions,p.search_instructions],['linkedin_url',values.linkedin_url,p.linkedin_url],
+  ['salary_target',values.salary_target,p.salary_target],['service_tier',values.service_tier,p.service_tier],
+  ['salary_currency',values.salary_currency,p.salary_currency],['transferable_roles',values.transferable_roles,p.transferable_roles],
+  ['employment_types',values.employment_types,p.employment_types],['industries',values.industries,p.industries],
+  ['relocation_preferences',values.relocation_preferences,p.relocation_preferences],['pension_preferences',values.pension_preferences,p.pension_preferences],
+  ['min_fit_score',values.min_fit_score,p.min_fit_score]
+ ];
+ return pairs.some(([,a,b])=>n(a)!==n(b));
+}
 function isDiyCustomer(){return state.account?.role==='customer'&&(currentProfile()?.service_tier||'diy')==='diy'}
 function canOperateUi(){return state.account?.role==='admin'||state.account?.role==='staff'||isDiyCustomer()}
 function operatorEyebrow(){return state.account?.role==='customer'?'DIY job search':'Staff operations'}
@@ -164,9 +186,13 @@ function profilePage(){
  const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
  const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
  const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
+ const promptNeedsUpdate=aiPromptNeedsUpdate(p);
+ const promptButton=promptNeedsUpdate
+   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI Search Prompt':'Create AI Search Prompt')+'</button>'
+   :'<button class="btn outline small" type="button" disabled title="AI prompt matches the current saved profile">AI Prompt Up to Date</button>';
  const headingExtra=operator
-   ?'<div class="stack profile-heading-tools">'+customerPicker()+'<button class="btn outline small" type="button" data-action="update-ai-prompt">Update AI Search Prompt</button><button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
-   :'<button class="btn outline small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button>';
+   ?'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
+   :'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
  let html=head(operator?'Customer setup':'Customer setup',customerName(id)+' · Profile & Search Preferences','Profile sections are read-only by default. Select the pencil icon to edit one section at a time.',headingExtra);
  html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
  '<section id="profile-section-search-focus" class="card profile-panel '+(isEditing('search-focus')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Search focus</h2>'+editIcon('search-focus','Search focus')+'</div>'+
@@ -696,16 +722,45 @@ async function handleClick(target){
   return;
  }
  if(action==='update-ai-prompt'){
-  if(state.account.role==='customer')throw Error('This action is available from Customer Setup for Admin or assigned Staff.');
   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
-  const values=profileFormValues();
-  target.textContent='Updating prompt…';
-  const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
+  const profile=currentProfile();if(!profile)throw Error('Customer profile unavailable.');
+  if(!aiPromptNeedsUpdate(profile)){notice('AI search prompt is already up to date with the current profile.');return;}
+  target.textContent='Generating AI proposal…';
+  const response=await fetch(config.supabaseUrl+'/functions/v1/run-job-search',{
+   method:'POST',
+   headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+   body:JSON.stringify({customer_id:customer,improve_prompt:true}),
+   signal:AbortSignal.timeout(90000)
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.ok)throw Error(result.error||'Could not generate AI search prompt update.');
+  if(result.prompt_up_to_date){
+   await loadData(state.me);state.page='profile';render();notice('AI search prompt is already up to date.');return;
+  }
+  state.aiPromptProposal={
+   customer,
+   prompt:result.proposed_prompt||'',
+   current:result.current_prompt||'',
+   summary:result.change_summary||'',
+   profileUpdatedAt:result.profile_updated_at,
+   model:result.model||''
+  };
+  openDialog('AI Search Prompt Update','<div class="prompt-meta"><span class="badge neutral">AI proposal</span>'+(result.model?'<span class="badge neutral">'+esc(result.model)+'</span>':'')+'</div><p><strong>What AI changed</strong></p><p class="muted">'+esc(result.change_summary||'AI rebuilt the search strategy from the updated customer profile.')+'</p>'+(result.current_prompt?'<details class="prompt-current"><summary>View current AI search prompt</summary><pre class="prompt-preview compact">'+esc(result.current_prompt)+'</pre></details>':'<p class="hint">This will create the first AI-generated search strategy for this profile.</p>')+'<div class="field"><label for="aiPromptProposalText">Proposed AI search prompt</label><textarea id="aiPromptProposalText" class="expanded-field-editor">'+esc(result.proposed_prompt||'')+'</textarea></div><div class="stack"><button class="btn" type="button" data-action="apply-ai-prompt">Apply AI Update</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></div>',true);
+  return;
+ }
+ if(action==='apply-ai-prompt'){
+  const proposal=state.aiPromptProposal;
+  if(!proposal)throw Error('No AI prompt proposal is loaded.');
+  const prompt=$('#aiPromptProposalText')?.value.trim()||'';
+  if(prompt.length<40)throw Error('AI search prompt is too short.');
+  target.textContent='Applying…';
+  const {error}=await state.sb.rpc('save_ai_search_prompt',{p_customer:proposal.customer,p_prompt:prompt,p_profile_updated_at:proposal.profileUpdatedAt});
   if(error)throw error;
+  state.aiPromptProposal=null;
+  closeDialog();
   await loadData(state.me);
   state.page='profile';render();
-  await showAiPromptPreview(customer);
-  notice('Customer preferences saved and AI search prompt updated.');
+  notice('AI search prompt updated for the current customer profile.');
   return;
  }
  if(action==='copy-ai-prompt'){
@@ -830,6 +885,10 @@ async function handleSubmit(form){
  if(type==='profileForm'){
   const values=profileFormValues();
   const operator=state.account.role!=='customer';
+  const pendingFiles=state.account.role==='customer'?[...($('#referenceFiles')?.files||[])]:[];
+  if(!profileValuesChanged(values)&&!pendingFiles.length){
+   state.profileEditSection=null;render();notice('No profile changes to save. AI search prompt remains up to date.');return;
+  }
   if(operator){
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
    const {error}=await state.sb.rpc('operator_update_customer_profile',{p_customer:customer,p_values:values});
@@ -838,7 +897,7 @@ async function handleSubmit(form){
   }
   const {data:updated,error}=await state.sb.from('customer_profiles').update(values).eq('customer_id',state.me.id).select('customer_id');
   if(error)throw error;
-  const files=[...($('#referenceFiles').files||[])];
+  const files=pendingFiles;
   if(files.length>10)throw Error('Upload up to 10 reference resumes at a time.');
   let uploaded=0;
   for(const file of files){
