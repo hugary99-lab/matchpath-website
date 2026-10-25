@@ -170,6 +170,10 @@ function customerProfileViewPage(){
  ro('Additional AI search instructions',p.search_instructions)+
  '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
  '</section>'+
+ '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+profileEditIcon('reference-resumes','Original / Reference Resumes')+'</div>'+
+ '<p class="muted">These source resumes help MatchPath verify experience and improve the AI search prompt. They are not sent on every job search.</p>'+
+ '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can use the ✎ icon to add up to 5 PDF resumes.</div>')+'</div>'+
+ '</section>'+
  '</div>';
  return html;
 }
