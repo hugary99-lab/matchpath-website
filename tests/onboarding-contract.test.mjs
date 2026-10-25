@@ -3,58 +3,79 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
-const path = new URL('../beta/app.js', import.meta.url);
-const source = readFileSync(path, 'utf8');
-const profileSave = source.slice(
-  source.indexOf("if(type==='profileForm')"),
-  source.indexOf("if(type==='singleDocumentForm')")
-);
-const requiredFields = [
-  'linkedin_url', 'target_roles', 'transferable_roles', 'preferred_locations',
-  'relocation_preferences', 'salary_min', 'salary_target', 'salary_currency',
-  'service_tier', 'work_preference', 'industries', 'employment_types',
-  'pension_preferences', 'exclusions', 'search_instructions', 'min_fit_score'
+const appPath = new URL('../beta/app.js', import.meta.url);
+const source = readFileSync(appPath, 'utf8');
+function between(start, end) {
+  const a = source.indexOf(start), b = source.indexOf(end, a + start.length);
+  assert.ok(a >= 0 && b > a, 'Missing expected source section: ' + start);
+  return source.slice(a, b);
+}
+const form = between('function profileFormValues(){', 'async function showAiPromptPreview(');
+const changes = between('function profileValuesChanged(', 'function isDiyCustomer(');
+const save = between("if(type==='profileForm'){", "if(type==='bulkSubmitForm'){");
+const upload = between('async function uploadReferenceResumes(', 'async function signedPdf(');
+const fields = [
+  'linkedin_url','target_roles','transferable_roles','preferred_locations',
+  'relocation_preferences','salary_min','salary_target','salary_currency',
+  'service_tier','work_preference','industries','employment_types',
+  'pension_preferences','exclusions','search_instructions','min_fit_score'
 ];
 
-test('portal JavaScript passes Node module syntax check', () => {
-  const result = spawnSync(process.execPath, ['--check', path.pathname], { encoding: 'utf8' });
+test('portal JavaScript parses as a module', () => {
+  const result = spawnSync(process.execPath, ['--check', appPath.pathname], { encoding:'utf8' });
   assert.equal(result.status, 0, result.stderr);
 });
 
-test('every onboarding field is rendered and included in the save payload', () => {
-  assert.ok(profileSave.length > 1000, 'Could not locate onboarding handler');
-  for (const field of requiredFields) {
-    assert.ok(
-      source.includes("field('" + field + "'") ||
-      source.includes("area('" + field + "'") ||
-      source.includes('id="' + field + '"'),
-      field + ' is not rendered'
-    );
-    assert.ok(profileSave.includes(field + ':'), field + ' is not saved');
+test('all 16 onboarding fields are serialized and compared for changes', () => {
+  for (const field of fields) {
+    assert.ok(form.includes(field + ':'), 'Missing save payload: ' + field);
+    assert.ok(changes.includes("'" + field + "'"), 'Missing change tracking: ' + field);
   }
 });
 
-test('resume uploads use non-overwriting unique private paths', () => {
-  assert.match(profileSave, /reference-resumes\/['"]\+crypto\.randomUUID\(\)\+['"]\.pdf/);
-  assert.match(profileSave, /storage\.from\('matchpath-profiles'\)\.upload\(/);
-  assert.match(profileSave, /upsert:false/);
-  assert.match(profileSave, /await validatePdf\(file\)/);
+test('hard exclusions and flexible search preferences remain separate', () => {
+  assert.match(form, /exclusions:\s*\$\('#exclusions'\)/);
+  assert.match(form, /search_instructions:\s*\$\('#search_instructions'\)/);
 });
 
-test('every uploaded resume is registered with owner, path and original filename', () => {
-  assert.match(profileSave, /from\('reference_resumes'\)\.insert\(/);
-  for (const key of ['customer_id:state.me.id', 'storage_path:path', 'original_filename:file.name', 'size_bytes:file.size']) {
-    assert.ok(profileSave.includes(key), 'Missing metadata: ' + key);
+test('saving onboarding does not automatically run AI or submit applications', () => {
+  assert.match(save, /profileFormValues\(\)/);
+  assert.doesNotMatch(save, /run-job-search|staff_set_application_status|apply-ai-prompt|openai\.com/);
+});
+
+test('reference resumes are limited to five and use immutable private PDF paths', () => {
+  assert.match(upload, /existingCount\+list\.length>5/);
+  assert.match(upload, /await validatePdf\(file\)/);
+  assert.match(upload, /crypto\.randomUUID\(\)\+'\.pdf'/);
+  assert.match(upload, /storage\.from\('matchpath-profiles'\)\.upload\(/);
+  assert.match(upload, /upsert:false/);
+});
+
+test('metadata registration follows storage upload, with best-effort cleanup on error', () => {
+  const stored = upload.indexOf("storage.from('matchpath-profiles').upload(");
+  const registered = upload.indexOf("rpc('register_reference_resume'");
+  assert.ok(stored >= 0 && registered > stored, 'Resume metadata must follow object upload');
+  for (const arg of ['p_customer:customer','p_storage_path:path','p_original_filename:file.name','p_size_bytes:file.size']) {
+    assert.ok(upload.includes(arg), 'Missing registration argument: ' + arg);
   }
-  assert.match(profileSave, /if\(metadataError\)throw/);
+  assert.match(upload, /if\(metadataError\)/);
+  assert.match(upload, /storage\.from\('matchpath-profiles'\)\.remove\(\[path\]\)/);
 });
 
-test('reference download is owner-scoped and uses private signed URL', () => {
-  assert.ok(source.includes("x.customer_id===state.me.id"), 'Owner guard missing');
-  assert.ok(source.includes("signedPdf(item.storage_path,'matchpath-profiles')"), 'Private signed download missing');
+test('admin upload control is role-gated and limited to selected customer', () => {
+  assert.ok(source.includes('data-action="choose-reference-resumes"'));
+  assert.ok(source.includes("if(state.account?.role!=='admin')throw Error('Administrator access required to upload customer resumes.')"));
+  assert.ok(source.includes("if(e.target.id==='reviewReferenceFiles')"));
+  assert.ok(source.includes('uploadReferenceResumes(customer,files)'));
 });
 
-test('profile save does not imply AI processing or employer submission', () => {
-  assert.match(profileSave, /AI career profiling has not started/);
-  assert.doesNotMatch(profileSave, /customer_decide_job|staff_set_application_status|openai\.com/);
+test('reference downloads are scoped to current customer and signed private storage', () => {
+  assert.ok(source.includes('x.customer_id===currentCustomer()'));
+  assert.ok(source.includes("signedPdf(item.storage_path,'matchpath-profiles')"));
+});
+
+test('AI search prompt refresh requires a stale profile and explicit approval', () => {
+  assert.ok(source.includes('if(!aiPromptNeedsUpdate(profile))'));
+  assert.ok(source.includes("data-action=\"apply-ai-prompt\""));
+  assert.ok(source.includes("rpc('save_ai_search_prompt'"));
 });
