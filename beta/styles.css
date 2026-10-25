@@ -126,3 +126,19 @@
 .resume-strengthening-item span{font-size:12px;color:#5b6570}
 .resume-strengthening-item em{font-size:12px;color:#7b5f14;font-style:normal}
 .resume-strengthening-item.legacy{background:#fbfaf4}
+
+
+/* General resume library */
+.general-resume-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.general-resume-card{border:1px solid var(--border,#d9dee6);border-radius:12px;padding:16px;background:var(--card,#fff)}
+.general-resume-card h3{margin:4px 0 8px}
+.general-resume-card p{margin:0;color:var(--muted,#667085)}
+.resume-preview-document{max-width:850px;margin:0 auto;background:#fff;padding:10px 4px}
+.resume-preview-document section{padding:14px 0;border-top:1px solid #e8ebef}
+.resume-preview-document section:first-of-type{border-top:0}
+.resume-preview-document h2{margin:0 0 4px;font-size:24px}
+.resume-preview-document h3{margin:0 0 8px}
+.resume-preview-header{text-align:center;padding:6px 0 18px}
+.resume-preview-header p{margin:4px 0;color:#667085}
+.resume-preview-role{padding:10px 0}
+.resume-preview-role .checklist{margin-top:8px}
