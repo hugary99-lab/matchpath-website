@@ -191,7 +191,7 @@ Deno.serve(async (req: Request) => {
         resume_use_policy: [
           "Use all experience, skills, systems, responsibilities, capabilities and credentials explicitly claimed in the attached resumes for search targeting and fit scoring.",
           "A claim does not need detailed role-level bullets to count as candidate-stated experience.",
-          "Do not infer new credentials or qualifications that are not stated anywhere."
+          "Do not infer new credentials or qualifications that are not stated anywhere.",
           "Do not let resume content override explicit target roles, geography, employment type, exclusions, pension preferences or other profile preferences.",
           "Do not copy names, phone numbers, email addresses, street addresses or other personal contact information into the generated search strategy."
         ],
