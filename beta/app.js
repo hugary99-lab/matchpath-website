@@ -175,69 +175,10 @@ function customerProfileViewPage(){
  '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
  '<div class="profile-prompt-state"><strong>'+(p.ai_search_prompt?'AI search prompt exists':'AI search prompt not created yet')+'</strong><span class="hint">'+(promptNeedsUpdate?(p.ai_search_prompt?'Profile or reference resumes changed. Update the AI search prompt before the next search.':'Create the AI search prompt from this profile and its original/reference resumes.'):'AI search prompt is current for this profile.')+'</span></div>'+
  '</section>'+
- '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+profileEditIcon('reference-resumes','Original / Reference Resumes')+'</div>'+
+ '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,application/pdf" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">⬆ Upload resume</button></div>':'')+'</div>'+
  '<p class="muted">These source resumes help MatchPath verify experience and improve the AI search prompt. They are not sent on every job search.</p>'+
- '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can use the ✎ icon to add up to 5 PDF resumes.</div>')+'</div>'+
+ '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon" aria-hidden="true">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can upload up to 5 PDF resumes directly here.</div>')+'</div>'+
  '</section>'+
- '</div>';
- return html;
-}
-function profilePage(){
- const p=currentProfile()||{},id=currentCustomer(),operator=state.account?.role!=='customer';
- const active=state.profileEditSection||null;
- const isEditing=section=>active===section;
- const editIcon=(section,label)=>'<button class="icon-btn profile-edit-icon '+(isEditing(section)?'active':'')+'" type="button" data-action="edit-profile-section" data-section="'+esc(section)+'" aria-label="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'" title="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'">✎</button>';
- const saveButton=(section,label)=>isEditing(section)?'<div class="profile-section-actions"><button class="btn small" type="submit" data-section="'+esc(section)+'">'+esc(label)+'</button></div>':'';
- const pArea=(section,id,label,value='',hint='')=>isEditing(section)?area(id,label,value,hint):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><textarea id="'+esc(id)+'" disabled>'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
- const pField=(section,id,label,value='',type='text',extra='')=>isEditing(section)?field(id,label,value,type,extra):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><input id="'+esc(id)+'" type="'+esc(type)+'" value="'+esc(value)+'" disabled></div>';
- const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
- const objectives=String(p.career_goals||'').split('\n').filter(x=>x.startsWith('• ')).map(x=>x.slice(2));
- const linkedinMatch=String(p.search_instructions||'').match(/^LinkedIn profile: (https:\/\/[^\s]+)/m);
- const cleanInstructions=String(p.search_instructions||'').replace(/^LinkedIn profile: https:\/\/[^\s]+\n?/m,'');
- const goalsFree=String(p.career_goals||'').split('\n').filter(x=>!x.startsWith('• ')).join('\n').trim();
- const employmentOptions=['Permanent','Full-time','Part-time','Contract','Temporary','Casual'];
- const selectedEmployment=String(p.employment_types||'').split(/[;,\n]+/).map(x=>x.trim()).filter(Boolean);
- const employmentChoices=[...employmentOptions,...selectedEmployment.filter(x=>!employmentOptions.includes(x))];
- const promptNeedsUpdate=aiPromptNeedsUpdate(p);
- const promptButton=promptNeedsUpdate
-   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI Search Prompt':'Create AI Search Prompt')+'</button>'
-   :'<button class="btn outline small" type="button" disabled title="AI prompt matches the current saved profile">AI Prompt Up to Date</button>';
- const headingExtra=operator
-   ?'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
-   :'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
- let html=head(operator?'Customer setup':'Customer setup',customerName(id)+' · Profile & Search Preferences','Profile sections are read-only by default. Select the pencil icon to edit one section at a time.',headingExtra);
- html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
- '<section id="profile-section-search-focus" class="card profile-panel '+(isEditing('search-focus')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Search focus</h2>'+editIcon('search-focus','Search focus')+'</div>'+
- pArea('search-focus','target_roles','Target roles and seniority',p.target_roles)+
- pArea('search-focus','transferable_roles','Adjacent / transferable roles',p.transferable_roles)+
- pArea('search-focus','industries','Industries and sectors',p.industries)+
- '<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">'+(isEditing('search-focus')?'Select all that apply':'Read only')+'</span></div><div class="multi-check-grid '+(isEditing('search-focus')?'':'readonly-checks')+'">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" name="employment_type" value="'+esc(x)+'" '+(selectedEmployment.includes(x)?'checked':'')+' '+(isEditing('search-focus')?'':'disabled')+'> '+esc(x)+'</label>').join('')+'</div></div>'+
- saveButton('search-focus','Save Search Focus')+
- '</section>'+
- '<section id="profile-section-location-comp" class="card profile-panel '+(isEditing('location-comp')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Location, work & compensation</h2>'+editIcon('location-comp','Location, work and compensation')+'</div>'+
- pArea('location-comp','preferred_locations','Preferred locations',p.preferred_locations)+
- pArea('location-comp','relocation_preferences','Relocation flexibility',p.relocation_preferences)+
- '<div class="form-row"><div class="field"><div class="field-label-row"><label for="work_preference">Work arrangement</label><span class="hint">'+(isEditing('location-comp')?'':'Read only')+'</span></div><select id="work_preference" '+(isEditing('location-comp')?'':'disabled')+'>'+['Any','Remote','Hybrid','Onsite'].map(x=>'<option '+(p.work_preference===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
- pField('location-comp','salary_min','Minimum compensation',p.salary_min||'','number','min="0"')+'</div>'+
- '<div class="form-row"><div class="field"><div class="field-label-row"><label for="salary_currency">Currency</label><span class="hint">'+(isEditing('location-comp')?'':'Read only')+'</span></div><select id="salary_currency" '+(isEditing('location-comp')?'':'disabled')+'>'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
- pField('location-comp','salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+
- pArea('location-comp','pension_preferences','Benefits / pension preferences',p.pension_preferences)+
- saveButton('location-comp','Save Location & Compensation')+
- '</section>'+
- '<section id="profile-section-career-priorities" class="card profile-panel '+(isEditing('career-priorities')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Career priorities</h2>'+editIcon('career-priorities','Career priorities')+'</div>'+
- '<div class="profile-objectives '+(isEditing('career-priorities')?'':'readonly-objectives')+'">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+' '+(isEditing('career-priorities')?'':'disabled')+'> '+esc(o)+'</label>').join('')+'</div>'+
- pArea('career-priorities','career_goals_detail','Career destination, priorities and timeline',goalsFree)+
- saveButton('career-priorities','Save Career Priorities')+
- '</section>'+
- '<section id="profile-section-ai-search-controls" class="card profile-panel '+(isEditing('ai-search-controls')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>AI search controls</h2>'+editIcon('ai-search-controls','AI search controls')+'</div>'+
- pField('ai-search-controls','linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
- pArea('ai-search-controls','exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
- pArea('ai-search-controls','search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+
- '<div class="form-row">'+pField('ai-search-controls','min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+
- '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
- saveButton('ai-search-controls','Save AI Search Controls')+
- '</section>'+
- '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF resumes</label><input id="referenceFiles" type="file" accept=".pdf,application/pdf" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI Search Prompt runs, these PDFs may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
  '</div></form>';
  return html;
 }
@@ -551,6 +492,27 @@ async function showAiPromptPreview(customer){
  openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy Prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
  return result;
 }
+async function uploadReferenceResumes(customer,files){
+ const list=[...(files||[])];
+ if(!customer)throw Error('Customer unavailable.');
+ const existingCount=state.referenceResumes.filter(r=>r.customer_id===customer).length;
+ if(!list.length)return 0;
+ if(existingCount+list.length>5)throw Error('A customer can have at most 5 original/reference resumes. You can upload '+Math.max(0,5-existingCount)+' more.');
+ let uploaded=0;
+ for(const file of list){
+  await validatePdf(file);
+  const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
+  const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
+  if(e)throw Error('Resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
+  const {error:metadataError}=await state.sb.rpc('register_reference_resume',{p_customer:customer,p_storage_path:path,p_original_filename:file.name.slice(0,240),p_size_bytes:file.size});
+  if(metadataError){
+   await state.sb.storage.from('matchpath-profiles').remove([path]).catch(()=>{});
+   throw Error('Resume upload could not be registered: '+errorMsg(metadataError));
+  }
+  uploaded++;
+ }
+ return uploaded;
+}
 async function signedPdf(path,bucket){const {data,error}=await state.sb.storage.from(bucket).createSignedUrl(path,120);if(error)throw error;window.open(data.signedUrl,'_blank','noopener,noreferrer')}
 async function downloadAllCustomerDocuments(){
  const customerId=currentCustomer();if(!customerId)throw Error('Select a customer first.');
@@ -625,6 +587,11 @@ async function downloadSelectedResumes(jobIds){
 const csvCell=value=>'"'+String(value??'').replaceAll('"','""')+'"';
 async function handleClick(target){
  const action=target.dataset.action;
+ if(action==='choose-reference-resumes'){
+  if(state.account?.role!=='admin')throw Error('Administrator access required to upload customer resumes.');
+  const input=$('#reviewReferenceFiles');if(!input)throw Error('Resume upload control unavailable.');
+  input.click();return;
+ }
  if(action==='reference-download'){const item=state.referenceResumes.find(x=>x.storage_path===target.dataset.path&&x.customer_id===currentCustomer());if(!item)throw Error('Resume unavailable for this customer');await signedPdf(item.storage_path,'matchpath-profiles');return}
  if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
@@ -921,21 +888,7 @@ async function handleSubmit(form){
    }
   }
 
-  const existingResumeCount=state.referenceResumes.filter(r=>r.customer_id===customer).length;
-  if(existingResumeCount+pendingFiles.length>5)throw Error('A customer can have at most 5 original/reference resumes. You can upload '+Math.max(0,5-existingResumeCount)+' more.');
-  let uploaded=0;
-  for(const file of pendingFiles){
-   await validatePdf(file);
-   const path=customer+'/reference-resumes/'+crypto.randomUUID()+'.pdf';
-   const {error:e}=await state.sb.storage.from('matchpath-profiles').upload(path,file,{contentType:'application/pdf',upsert:false});
-   if(e)throw Error('Profile saved, but resume upload '+(uploaded+1)+' failed: '+errorMsg(e));
-   const {error:metadataError}=await state.sb.rpc('register_reference_resume',{p_customer:customer,p_storage_path:path,p_original_filename:file.name.slice(0,240),p_size_bytes:file.size});
-   if(metadataError){
-    await state.sb.storage.from('matchpath-profiles').remove([path]).catch(()=>{});
-    throw Error('Resume upload could not be registered: '+errorMsg(metadataError));
-   }
-   uploaded++;
-  }
+  const uploaded=await uploadReferenceResumes(customer,pendingFiles);
 
   state.profileEditSection=null;
   await loadData(state.me);
@@ -1077,6 +1030,19 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.id==='reviewReferenceFiles'){
+   if(state.account?.role!=='admin')throw Error('Administrator access required to upload customer resumes.');
+   const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+   const files=[...(e.target.files||[])];
+   if(!files.length)return;
+   notice('Uploading '+files.length+' resume'+(files.length===1?'':'s')+'…');
+   const uploaded=await uploadReferenceResumes(customer,files);
+   await loadData(state.me);
+   state.page='customer-profile';
+   render();
+   notice(uploaded+' original/reference resume'+(uploaded===1?'':'s')+' uploaded. AI search prompt now needs an update.');
+   return;
+  }
   if(e.target.id==='resultQualificationFilter'){
    state.resultQualificationFilter=e.target.value||'all';
    render();
