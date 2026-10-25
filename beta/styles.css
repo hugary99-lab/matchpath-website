@@ -89,3 +89,10 @@
 .field-tool-icon:hover{background:#eef8f6}
 .field-tool-icon:disabled{opacity:.45;cursor:not-allowed}
 .field-tool-icon.large{width:34px;height:34px;font-size:17px}
+
+
+/* Original / Reference resumes */
+.reference-resume-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.reference-resume-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;border:1px solid var(--edge);border-radius:9px;background:#f8fafb}
+.reference-resume-row>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.reference-resume-row strong{font-size:13px;color:#294554;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
