@@ -100,3 +100,7 @@
 
 .profile-prompt-state{display:flex;flex-direction:column;gap:3px;margin-top:12px;padding:10px 11px;border:1px solid var(--edge);border-radius:9px;background:#f8fafb}
 .profile-prompt-state strong{font-size:13px;color:#294554}
+
+
+.reference-resume-file{display:flex;align-items:center;gap:9px;min-width:0}
+.resume-file-icon{font-size:20px;line-height:1;flex:0 0 auto}
