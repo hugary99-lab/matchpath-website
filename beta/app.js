@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="field-tool-icon" type="button" data-action="expand-field" data-field="'+esc(id)+'" aria-label="Expand editor" title="Expand editor">⛶</button><button class="field-tool-icon" type="button" data-action="voice-field" data-field="'+esc(id)+'" aria-label="Voice input" title="Voice input">🎤</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],candidateEvidence:[],searchStrategies:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -462,14 +462,14 @@ async function loadData(knownUser=null){
  const account=records[0];
  if(!account)throw Error('No account record returned.');
  state.account=account;
- const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes','candidate_evidence_versions','search_strategy_versions'];
+ const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes','candidate_evidence_versions','search_strategy_versions','general_resume_versions'];
  const tables=await Promise.all(keys.map(async table=>{
    const url=config.supabaseUrl+'/rest/v1/'+table+'?select=*&limit='+(table==='jobs'?1000:500);
    const response=await within(fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Loading '+table,12000);
    if(!response.ok)throw Error('Loading '+table+' HTTP '+response.status+': '+(await response.text()).slice(0,250));
    return await response.json();
  }));
- [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes,state.candidateEvidence,state.searchStrategies]=tables;
+ [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes,state.candidateEvidence,state.searchStrategies,state.generalResumes]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.apps.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.runs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -590,6 +590,19 @@ async function callProfileAnalysis(action,extra={}){
  });
  const result=await response.json().catch(()=>({}));
  if(!response.ok||!result.ok)throw Error(result.error||'Profile Analysis failed (HTTP '+response.status+').');
+ return result;
+}
+
+async function generateGeneralResumeLibrary(){
+ const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
+ const response=await fetch(config.supabaseUrl+'/functions/v1/generate-general-resumes',{
+  method:'POST',
+  headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+  body:JSON.stringify({customer_id:customer}),
+  signal:AbortSignal.timeout(180000)
+ });
+ const result=await response.json().catch(()=>({}));
+ if(!response.ok||!result.ok)throw Error(result.error||'General Resume generation failed (HTTP '+response.status+').');
  return result;
 }
 async function uploadReferenceResumes(customer,files){
