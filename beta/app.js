@@ -820,6 +820,32 @@ async function handleClick(target){
   openDialog('AI Search Strategy v'+strategy.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(strategy.status)+'</span><span class="badge neutral">'+esc(strategy.model||'configured model')+'</span></div><p class="hint">This prompt becomes the live AI Search Prompt after activation.</p><pre class="prompt-preview">'+esc(strategy.prompt_text||'')+'</pre><div class="stack"><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
   return;
  }
+ if(action==='generate-general-resumes'){
+  const original=target.textContent;target.disabled=true;target.textContent='Generating resumes…';
+  try{
+   const result=await generateGeneralResumeLibrary();
+   await loadData(state.me);
+   state.page='profile-analysis';render();
+   notice('General Resume Library created with '+(result.count||0)+' categor'+((result.count||0)===1?'y':'ies')+'.');
+  }finally{
+   if(target.isConnected){target.disabled=false;target.textContent=original}
+  }
+  return;
+ }
+ if(action==='view-general-resume'){
+  const row=state.generalResumes.find(x=>x.id===target.dataset.resume&&x.customer_id===currentCustomer());
+  if(!row)throw Error('General resume unavailable.');
+  openDialog(row.category_name+' · General Resume v'+row.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(row.status)+'</span><span class="badge neutral">'+esc(row.model||'configured model')+'</span></div><p class="hint">'+esc(row.focus_summary||'Reusable baseline resume')+'</p>'+generalResumePreviewHtml(row)+'<div class="stack section"><button class="btn outline small" type="button" data-action="copy-general-resume" data-resume="'+esc(row.id)+'">Copy Resume Text</button><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
+  return;
+ }
+ if(action==='copy-general-resume'){
+  const row=state.generalResumes.find(x=>x.id===target.dataset.resume&&x.customer_id===currentCustomer());
+  if(!row)throw Error('General resume unavailable.');
+  const text=generalResumeText(row);if(!text)throw Error('Resume text is empty.');
+  await navigator.clipboard.writeText(text);
+  notice(row.category_name+' resume copied to clipboard.');
+  return;
+ }
  if(action==='decision'){
   if(!confirm('Record this job as '+target.dataset.decision+'?'))return;
   const {error}=await state.sb.rpc('customer_decide_job',{p_job:target.dataset.job,p_decision:target.dataset.decision});
