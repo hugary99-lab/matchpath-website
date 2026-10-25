@@ -104,8 +104,7 @@ Deno.serve(async (req: Request) => {
         if (signedError || !signed?.signedUrl) return respond({ error: "Could not securely prepare a resume for AI analysis" }, 500);
         fileInputs.push({
           type: "input_file",
-          file_url: signed.signedUrl,
-          filename: clean(row.original_filename, 240) || "resume",
+          file_url: signed.signedUrl
         });
       }
 
