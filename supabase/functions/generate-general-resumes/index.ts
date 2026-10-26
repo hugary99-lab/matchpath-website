@@ -36,6 +36,25 @@ function slugify(value: unknown, fallback: string) {
   return s || fallback;
 }
 
+const transientOpenAIStatuses = new Set([429, 500, 502, 503, 504]);
+
+async function fetchOpenAIWithRetry(url: string, init: RequestInit, maxAttempts = 3) {
+  let lastResponse: Response | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch(url, init);
+    lastResponse = response;
+    if (response.ok || !transientOpenAIStatuses.has(response.status) || attempt === maxAttempts) {
+      return response;
+    }
+    const retryAfter = Number(response.headers.get("retry-after") || "");
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+      ? Math.min(retryAfter * 1000, 15000)
+      : 1500 * Math.pow(2, attempt - 1);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return lastResponse!;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
@@ -222,13 +241,13 @@ Deno.serve(async (req: Request) => {
       "Return structured JSON only."
     ].join("\n");
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchOpenAIWithRetry("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { Authorization: "Bearer " + openaiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: Deno.env.get("OPENAI_PROFILE_MODEL") || Deno.env.get("OPENAI_SEARCH_MODEL") || "gpt-6.1-sol",
         store: false,
-        reasoning: { effort: "high" },
+        reasoning: { effort: "medium" },
         input: [
           { role: "system", content: system },
           { role: "user", content: [
@@ -248,7 +267,16 @@ Deno.serve(async (req: Request) => {
     });
 
     const raw = await response.json().catch(() => ({}));
-    if (!response.ok) return respond({ error: raw?.error?.message || "General resume generation failed" }, 502);
+    if (!response.ok) {
+      const upstreamMessage = raw?.error?.message || "General resume generation failed";
+      const transient = transientOpenAIStatuses.has(response.status);
+      return respond({
+        error: transient
+          ? "AI resume generation remained temporarily unavailable after automatic retries. Please try Generate General Resumes again."
+          : upstreamMessage,
+        upstream_status: response.status
+      }, 502);
+    }
 
     let parsed: any;
     try { parsed = JSON.parse(outputText(raw)); }
