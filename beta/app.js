@@ -247,7 +247,7 @@ function profileAnalysisPage(){
  html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 3</div><h2>AI Search Strategy</h2><p class="muted">Combines explicit profile preferences with Candidate Evidence. Candidate-stated experience can support matching; resume-strengthening recommendations improve how convincingly that experience is presented.</p></div><button class="btn" type="button" data-action="build-search-strategy" '+(canBuild?'':'disabled title="Current Candidate Evidence required"')+'>'+(strategy?(strategyCurrent?'Build New Strategy Version':'Build Updated Strategy'):'Build AI Search Strategy')+'</button></div>'+(strategy?'<div class="stack section"><span class="badge neutral">Strategy v'+esc(strategy.version)+'</span><span class="badge '+(strategyCurrent?'':'warn')+'">'+(strategyCurrent?'Inputs Current':'Inputs Changed')+'</span><span class="badge neutral">'+esc(strategy.status)+'</span></div><div class="analysis-summary"><h3>'+esc(s.strategy_summary||'AI Search Strategy')+'</h3></div><div class="grid two section"><div><h3>Primary roles</h3><div class="stack wrap">'+badges(s.primary_roles)+'</div><h3>Adjacent roles</h3><div class="stack wrap">'+badges(s.adjacent_roles)+'</div><h3>Priority sectors</h3><div class="stack wrap">'+badges(s.priority_sectors)+'</div></div><div><h3>Mandatory filters</h3><div class="stack wrap">'+badges(s.mandatory_filters)+'</div><h3>Verified strengths</h3><div class="stack wrap">'+badges(s.verified_strengths)+'</div><h3>Needs verification</h3><div class="stack wrap">'+badges(s.needs_verification,'warn')+'</div></div></div><div class="stack section"><button class="btn outline small" type="button" data-action="view-strategy-prompt" data-strategy="'+esc(strategy.id)+'">View Strategy Prompt</button>'+(strategy.status!=='current'&&strategyCurrent?'<button class="btn small" type="button" data-action="activate-search-strategy" data-strategy="'+esc(strategy.id)+'">Activate Strategy</button>':'')+(strategy.status==='current'&&strategyCurrent?'<span class="badge">Live AI Search Strategy</span>':'')+'</div>':'<div class="empty section"><strong>No AI Search Strategy yet</strong>Build one after Candidate Evidence is current.</div>')+'</section>';
  const canGenerateGeneralResumes=!!live&&liveCurrent&&!!evidence&&evidenceCurrent;
  html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 4</div><h2>General Resume Library</h2><p class="muted">Creates reusable ATS-friendly baseline resumes for the major career categories in the active strategy. These are starting points for later job-specific tailoring.</p></div><button class="btn" type="button" data-action="generate-general-resumes" '+(canGenerateGeneralResumes?'':'disabled title="Activate a current AI Search Strategy first"')+'>'+(generalResumes.length?(generalResumesCurrent?'Regenerate Resume Library':'Rebuild Resume Library'):'Generate General Resumes')+'</button></div>'+
- (generalResumes.length?'<div class="stack section"><span class="badge '+(generalResumesCurrent?'':'warn')+'">'+generalResumes.length+' categor'+(generalResumes.length===1?'y':'ies')+' · '+(generalResumesCurrent?'Current':'Inputs changed')+'</span>'+(live?'<span class="badge neutral">Strategy v'+esc(live.version)+'</span>':'')+(evidence?'<span class="badge neutral">Evidence v'+esc(evidence.version)+'</span>':'')+'</div><div class="general-resume-grid section">'+generalResumes.map(r=>'<article class="general-resume-card"><div class="space"><div><div class="eyebrow">GENERAL RESUME</div><h3>'+esc(r.category_name)+'</h3></div><span class="badge neutral">v'+esc(r.version)+'</span></div><p>'+esc(r.focus_summary||'Reusable baseline resume for this career lane.')+'</p><div class="stack wrap">'+badges(r.target_roles)+'</div><div class="stack section"><button class="btn outline small" type="button" data-action="view-general-resume" data-resume="'+esc(r.id)+'">View Resume</button><button class="btn ghost small" type="button" data-action="copy-general-resume" data-resume="'+esc(r.id)+'">Copy Text</button></div></article>').join('')+'</div>':'<div class="empty section"><strong>No general resumes yet</strong>Activate the current AI Search Strategy, then generate the category resume library.</div>')+
+ (generalResumes.length?'<div class="stack section"><span class="badge '+(generalResumesCurrent?'':'warn')+'">'+generalResumes.length+' categor'+(generalResumes.length===1?'y':'ies')+' · '+(generalResumesCurrent?'Current':'Inputs changed')+'</span>'+(live?'<span class="badge neutral">Strategy v'+esc(live.version)+'</span>':'')+(evidence?'<span class="badge neutral">Evidence v'+esc(evidence.version)+'</span>':'')+'</div><div class="general-resume-grid section">'+generalResumes.map(r=>'<article class="general-resume-card"><div class="space"><div><div class="eyebrow">GENERAL RESUME</div><h3>'+esc(r.category_name)+'</h3></div><span class="badge neutral">v'+esc(r.version)+'</span></div><p>'+esc(r.focus_summary||'Reusable baseline resume for this career lane.')+'</p><div class="stack wrap">'+badges(r.target_roles)+'</div><div class="stack section"><button class="btn outline small" type="button" data-action="view-general-resume" data-resume="'+esc(r.id)+'">View Resume</button><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(r.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(r.id)+'">Download PDF</button><button class="btn ghost small" type="button" data-action="copy-general-resume" data-resume="'+esc(r.id)+'">Copy Text</button></div></article>').join('')+'</div>':'<div class="empty section"><strong>No general resumes yet</strong>Activate the current AI Search Strategy, then generate the category resume library.</div>')+
  '</section>';
  const history=state.searchStrategies.filter(x=>x.customer_id===id).sort((a,b)=>Number(b.version)-Number(a.version));
  if(history.length)html+='<section class="card section"><h2>Strategy history</h2><div class="table-wrap"><table><thead><tr><th>Version</th><th>Status</th><th>Created</th><th>Model</th></tr></thead><tbody>'+history.slice(0,10).map(x=>'<tr><td>v'+esc(x.version)+'</td><td>'+statusBadge(x.status)+'</td><td>'+fmtDate(x.created_at)+'</td><td>'+esc(x.model||'—')+'</td></tr>').join('')+'</tbody></table></div></section>';
@@ -651,6 +651,32 @@ async function generateGeneralResumeLibrary(){
  if(!response.ok||!result.ok)throw Error(result.error||'General Resume generation failed (HTTP '+response.status+').');
  return result;
 }
+
+async function downloadGeneralResumeFile(resumeId,format){
+ const row=state.generalResumes.find(x=>x.id===resumeId&&x.customer_id===currentCustomer());
+ if(!row)throw Error('General resume unavailable.');
+ const response=await fetch(config.supabaseUrl+'/functions/v1/export-general-resume',{
+  method:'POST',
+  headers:{'Content-Type':'application/json',apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken},
+  body:JSON.stringify({resume_id:resumeId,format}),
+  signal:AbortSignal.timeout(120000)
+ });
+ if(!response.ok){
+  const err=await response.json().catch(()=>({}));
+  throw Error(err.error||'Resume download failed (HTTP '+response.status+').');
+ }
+ const blob=await response.blob();
+ const cd=response.headers.get('content-disposition')||'';
+ const match=cd.match(/filename="([^"]+)"/i);
+ const fallback=((row.resume_json?.candidate_name||customerName(row.customer_id))+' - '+row.category_name+' - v'+row.version+'.'+format)
+   .replace(/[^A-Za-z0-9._ -]+/g,'').replace(/\s+/g,' ').trim();
+ const filename=match?.[1]||fallback;
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
+ a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),2000);
+ return filename;
+}
 async function uploadReferenceResumes(customer,files){
  const list=[...(files||[])];
  if(!customer)throw Error('Customer unavailable.');
@@ -835,7 +861,7 @@ async function handleClick(target){
  if(action==='view-general-resume'){
   const row=state.generalResumes.find(x=>x.id===target.dataset.resume&&x.customer_id===currentCustomer());
   if(!row)throw Error('General resume unavailable.');
-  openDialog(row.category_name+' · General Resume v'+row.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(row.status)+'</span><span class="badge neutral">'+esc(row.model||'configured model')+'</span></div><p class="hint">'+esc(row.focus_summary||'Reusable baseline resume')+'</p>'+generalResumePreviewHtml(row)+'<div class="stack section"><button class="btn outline small" type="button" data-action="copy-general-resume" data-resume="'+esc(row.id)+'">Copy Resume Text</button><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
+  openDialog(row.category_name+' · General Resume v'+row.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(row.status)+'</span><span class="badge neutral">'+esc(row.model||'configured model')+'</span></div><p class="hint">'+esc(row.focus_summary||'Reusable baseline resume')+'</p>'+generalResumePreviewHtml(row)+'<div class="stack section"><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(row.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(row.id)+'">Download PDF</button><button class="btn outline small" type="button" data-action="copy-general-resume" data-resume="'+esc(row.id)+'">Copy Resume Text</button><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
   return;
  }
  if(action==='copy-general-resume'){
@@ -844,6 +870,18 @@ async function handleClick(target){
   const text=generalResumeText(row);if(!text)throw Error('Resume text is empty.');
   await navigator.clipboard.writeText(text);
   notice(row.category_name+' resume copied to clipboard.');
+  return;
+ }
+ if(action==='download-general-resume'){
+  const resumeId=target.dataset.resume,format=target.dataset.format;
+  if(!resumeId||!['docx','pdf'].includes(format))throw Error('Download format unavailable.');
+  const original=target.textContent;target.disabled=true;target.textContent='Preparing '+format.toUpperCase()+'…';
+  try{
+   const filename=await downloadGeneralResumeFile(resumeId,format);
+   notice(filename+' downloaded.');
+  }finally{
+   if(target.isConnected){target.disabled=false;target.textContent=original}
+  }
   return;
  }
  if(action==='decision'){
