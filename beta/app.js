@@ -398,39 +398,30 @@ function resultFilterControls(forcedStatus,shown,total){
 }
 function jobResultsPanel(forcedStatus='all'){
  const id=currentCustomer(),allRows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
- if(!id)return '<div class="card section empty">No customer assigned.</div>';
- if(!allRows.length)return '<section class="card section empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
-
- const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':s==='applied'?'Submitted':'Rejected';
- const search=state.resultSearch.trim().toLowerCase();
- const activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
+ if(!id)return '<div class="card section empty"><strong>No customer selected</strong>Select a customer to view jobs.</div>';
+ if(!allRows.length)return '<section class="card section empty"><strong>No jobs yet</strong>Run an AI search to find openings.<div class="section"><button class="btn outline small" data-action="navigate" data-page="import">Go to Job Search</button></div></section>';
+ const search=state.resultSearch.trim().toLowerCase(),activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
  const baseRows=allRows.filter(j=>activeStatus==='all'||jobResultUiStatus(j)===activeStatus);
- const rows=baseRows.filter(j=>{
-   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-   return true;
- });
-
- const counts={
-   new:allRows.filter(j=>jobResultUiStatus(j)==='new').length,
-   approved:allRows.filter(j=>jobResultUiStatus(j)==='approved').length,
-   applied:allRows.filter(j=>jobResultUiStatus(j)==='applied').length,
-   skipped:allRows.filter(j=>jobResultUiStatus(j)==='skipped').length,
-   rejected:allRows.filter(j=>jobResultUiStatus(j)==='rejected').length
- };
-
- let html='<section class="section">';
- html+='<div class="stack section-head"><span class="badge neutral">'+counts.new+' To review</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
+ const rows=baseRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
+ const counts={new:0,approved:0,applied:0,skipped:0,rejected:0};
+ allRows.forEach(j=>{const key=jobResultUiStatus(j);if(key in counts)counts[key]++});
+ let html='<section class="section"><div class="stack section-head"><span class="badge neutral">'+counts.new+' To be reviewed</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
  html+=resultFilterControls(forcedStatus,rows.length,baseRows.length);
- html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Employer / role</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
-   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
-   const current=jobResultUiStatus(j);
-   const lockedApplied=current==='applied';
-   const statusControl=canOperateUi()
-     ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:132px" '+(lockedApplied?'disabled title="Submitted records are immutable"':'')+'>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
-     :'<span class="badge neutral">'+esc(statusLabel(current))+'</span>';
-   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(canOperateUi()&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Documents</button>':'')+'</div></td></tr>';
+ if(canOperateUi()&&forcedStatus!=='applied'){
+  const dirty=Object.keys(state.resultStatusDrafts).length;
+  html+='<div class="space section section-head"><div class="hint" id="resultChangeCount">'+(dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges)+'</div><button class="btn" id="saveResultChanges" data-action="save-result-statuses" '+(dirty?'':'disabled')+'>'+COPY.save+'</button></div>';
+ }
+ if(!rows.length){
+  const descriptions={applied:'No submissions recorded yet. Record confirmed employer submissions from Approved.',skipped:'No skipped jobs yet. Skipped opportunities will appear here.',all:'No jobs match these filters. Try clearing your filters.',new:'No jobs waiting for review.',approved:'No approved jobs yet.'};
+  return html+'<section class="card section empty"><strong>Nothing to show</strong>'+descriptions[forcedStatus]+'<div class="section"><button class="btn outline small" data-action="navigate" data-page="'+(forcedStatus==='applied'?'queue-approved':forcedStatus==='all'?'import':'queue-new')+'">'+(forcedStatus==='applied'?'Go to Approved':forcedStatus==='all'?'Job Search':'Go to To be reviewed')+'</button></div></section></section>';
+ }
+ html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Job</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Actions</th></tr></thead><tbody>'+rows.map(j=>{
+  const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
+  const current=jobResultUiStatus(j),locked=current==='applied';
+  const chosen=state.resultStatusDrafts[j.id]||current;
+  const statusControl=canOperateUi()&&!locked?jobStatusSelect(j,chosen,'data-result-status'):('<span class="badge neutral">'+(current==='applied'?'Submitted':esc(JOB_STATUSES.find(([v])=>v===current)?.[1]||current))+'</span>');
+  const qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a>'+(app&&app.status!=='closed'?'<button class="btn ghost small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">'+COPY.viewDocuments+'</button>':'')+'</div></td></tr>';
  }).join('')+'</tbody></table></div></section></section>';
  return html;
 }
@@ -442,21 +433,17 @@ function updateReviewSaveState(){
 }
 function newReviewTriagePage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='new').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
- let html=head(operatorEyebrow(),'To be reviewed','Review new search results. Each job starts as To Be Reviewed. Change only the rows you want to Approve or Skip, then save all decisions together.',customerPicker());
- if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ let html=head(operatorEyebrow(),'To be reviewed','Choose Approve or Skip for each job, then save your changes.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer selected.</div>';
  const search=state.resultSearch.trim().toLowerCase();
- const rows=allRows.filter(j=>{
-   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-   return true;
- });
+ const rows=allRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
  html+=resultFilterControls('new',rows.length,allRows.length);
- html+='<div class="space section section-head"><div><strong>Review decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):'No unsaved changes')+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>Save Changes</button></div>';
- html+='<section class="card"><div class="table-wrap"><table><thead><tr><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>To Be Reviewed</th><th>Approved</th><th>Skipped</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
-   const draft=state.reviewDrafts[j.id]||'new';
-   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(salary)+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="new" '+(draft==='new'?'checked':'')+' aria-label="Keep To Be Reviewed"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="approved" '+(draft==='approved'?'checked':'')+' aria-label="Approve"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="skipped" '+(draft==='skipped'?'checked':'')+' aria-label="Skip"></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a></td></tr>';
+ html+='<div class="space section section-head"><div><strong>Job decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):COPY.emptyChanges)+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>'+COPY.save+'</button></div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No jobs to review</strong>Run a job search or clear the current filters.<div class="section"><button class="btn outline small" data-action="navigate" data-page="import">Go to Job Search</button></div></section>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th>Job</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
+  const draft=state.reviewDrafts[j.id]||'new',qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
+  return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · <span class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+esc(salary)+'</span></small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+jobStatusSelect(j,draft,'data-review-choice',['new','approved','skipped'])+'</td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a></td></tr>';
  }).join('')+'</tbody></table></div></section>';
  return html;
 }
