@@ -13,7 +13,7 @@ test('beta portal includes authenticated role-specific workflows',()=>{
  for(const field of ['customer_decide_job','import_search_results','register_document','staff_set_application_status','admin_set_role','admin_assign_staff'])assert.ok(app.includes(field),field);
  for(const field of ['validatePdf','validateZip','validateCsvFile','signedPdf','renderAuth','renderSetup'])assert.ok(app.includes(field),field);
  assert.match(app,/dataset\.change==='assign'/);
- assert.match(html,/type="module" src="\.\/app\.js"/);
+ assert.match(html,/type="module" src="\.\/app\.js(?:\?v=[^"]+)?"/);
  assert.match(css,/\.sidebar/);
 });
 test('security migration enables RLS and secures document buckets',()=>{
