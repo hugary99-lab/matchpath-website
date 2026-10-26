@@ -945,32 +945,15 @@ async function handleClick(target){
   notice((data?.updated||updates.length)+' review decision'+((data?.updated||updates.length)===1?'':'s')+' saved. Unchanged jobs remain To be reviewed.');
   return;
  }
- if(action==='save-job-status'){
-  if(!canOperateUi())throw Error('This workspace is not authorized to change job status.');
-  const job=byId(state.jobs,target.dataset.job);if(!job||job.customer_id!==currentCustomer())throw Error('Job unavailable for this customer.');
-  const select=$('#job-status-'+CSS.escape(job.id));if(!select)throw Error('Status control unavailable.');
-  const next=select.value;
-  const app=state.apps.find(a=>a.job_id===job.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===job.id);
-  const current=jobResultUiStatus(job);
-  if(next===current){notice('No status change to save.');return;}
-  if(current==='applied')throw Error('Applied records are immutable.');
-  if(next==='applied'){
-   if(!app||app.status==='closed')throw Error('Approve the job first so an application exists.');
-   if(!canPrepare(app))throw Error('Resume and cover letter must be uploaded before marking Applied.');
-   if(!['ready','in_progress'].includes(app.status)){
-    const {error:readyError}=await state.sb.rpc('staff_set_application_status',{p_application:app.id,p_status:'ready',p_reference:null,p_note:'Prepared for confirmed submission.'});
-    if(readyError)throw readyError;
-   }
-   openDialog('Confirm actual job application','<p class="warning">Use Applied only after the employer application was genuinely submitted. Record a confirmation/reference or verifiable acknowledgment.</p><form id="submitForm" data-app="'+esc(app.id)+'" data-return-page="queue-submitted">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm Applied</button></form>');
-   return;
-  }
-  const {error}=await state.sb.rpc('operator_set_job_review_status',{p_job:job.id,p_status:next});
+ if(action==='save-result-statuses'){
+  if(!canOperateUi())throw Error('Not authorized to change job statuses.');
+  const updates=Object.entries(state.resultStatusDrafts).map(([job_id,status])=>({job_id,status}));
+  if(!updates.length){notice(COPY.emptyChanges);return;}
+  if(updates.length>100)throw Error('Save up to 100 status changes at a time.');
+  const {data,error}=await state.sb.rpc('operator_bulk_set_job_statuses',{p_updates:updates});
   if(error)throw error;
-  await loadData(state.me);
-  state.page=next==='new'?'queue-new':next==='approved'?'queue-approved':next==='skipped'?'queue-skipped':'queue-all';
-  render();
-  notice('Job status saved as '+(next==='new'?'To be reviewed':next[0].toUpperCase()+next.slice(1))+'.');
-  return;
+  state.resultStatusDrafts={};await loadData(state.me);
+  notice((data?.updated||updates.length)+' job status change'+(updates.length===1?'':'s')+' saved.');return;
  }
  if(action==='approved-resume-batch'){
   if(!canOperateUi())throw Error('Not authorized.');
@@ -978,14 +961,13 @@ async function handleClick(target){
  }
  if(action==='approved-save-status'){
   if(!canOperateUi())throw Error('Not authorized.');
-  const ids=approvedSelectionIds();
-  const updates=ids.map(job_id=>({job_id,status:state.approvedStatusDrafts[job_id]||'approved'})).filter(x=>x.status!=='approved');
-  if(!updates.length){notice('No selected status changes to save.');return;}
+  const updates=Object.entries(state.approvedStatusDrafts).map(([job_id,status])=>({job_id,status}));
+  if(!updates.length){notice('No unsaved changes.');return;}
   const {data,error}=await state.sb.rpc('operator_bulk_set_job_statuses',{p_updates:updates});
   if(error)throw error;
   state.approvedSelections={};state.approvedStatusDrafts={};
   await loadData(state.me);state.page='queue-approved';render();
-  notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
+  notice((data?.updated||updates.length)+' job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
  }
  if(action==='revoke-document-consent'){
   if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers may revoke their own consent.');
@@ -1435,6 +1417,11 @@ document.addEventListener('change',async e=>{
    const box=document.querySelector('[data-approved-select][data-job="'+CSS.escape(job)+'"]');if(box)box.checked=true;
    updateApprovedBulkState();
    return;
+  }
+  if(e.target.matches('[data-result-status]')){
+   const job=e.target.dataset.job,status=e.target.value,original=jobResultUiStatus(byId(state.jobs,job)||{});
+   if(status===original)delete state.resultStatusDrafts[job];else state.resultStatusDrafts[job]=status;
+   updateResultSaveState();return;
   }
   if(e.target.matches('[data-review-choice]')){
    const job=e.target.dataset.job,status=e.target.value;
