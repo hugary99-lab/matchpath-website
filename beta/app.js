@@ -152,7 +152,9 @@ function dashboard(){
  const aiRuns=state.runs.filter(x=>x.customer_id===id&&x.run_type==='ai_search');
  const sumRun=(k)=>aiRuns.reduce((n,x)=>n+Number(x[k]||0),0);
  const funnelMetrics=[
-  ['AI reviewed',sumRun('ai_reviewed_count')],
+  ['Web searches executed',sumRun('web_search_call_count')],
+  ['Web sources retrieved',sumRun('web_sources_retrieved_count')],
+  ['Postings fully evaluated',sumRun('ai_reviewed_count')],
   ['Rejected by filters',sumRun('rejected_mandatory_count')],
   ['Below fit threshold',sumRun('below_threshold_count')],
   ['Needs verification',sumRun('needs_verification_count')],
