@@ -83,6 +83,32 @@ Deno.serve(async (req: Request) => {
     }));
 
     const today = new Date().toISOString().slice(0, 10);
+    const resultContract = [
+      "MATCHPATH RESULT FORMAT — REQUIRED",
+      "Return one JSON object with exactly one top-level key: jobs.",
+      "jobs must be an array with at most 25 rows. If no eligible results meet the requested threshold, return {\"jobs\":[]}.",
+      "Each job row must contain exactly these 15 fields:",
+      "searched_at, job_title, company, requisition_id, location, work_arrangement, salary_min, salary_max, currency, job_url, source, fit_score, qualification_status, fit_reason, concerns",
+      "Field rules:",
+      "- searched_at: offset-aware ISO 8601 timestamp for this research run.",
+      "- job_title: verified posting title.",
+      "- company: verified employer name.",
+      "- requisition_id: explicit verified requisition/job ID only; otherwise empty string.",
+      "- location: verified posting location.",
+      "- work_arrangement: exactly Remote, Hybrid, Onsite, or Unknown.",
+      "- salary_min and salary_max: verified numeric annual amounts only; otherwise null.",
+      "- currency: verified currency code such as CAD; otherwise empty string.",
+      "- job_url: direct job-specific HTTPS employer/official ATS URL.",
+      "- source: verification source or official source hostname.",
+      "- fit_score: integer 0-100 based on the approved scoring rules.",
+      "- qualification_status: exactly Qualified or Needs Verification for normal customer-facing output.",
+      "- fit_reason: concise evidence-based explanation of the match.",
+      "- concerns: concise material unknowns, risks, or verification items; use empty string when none.",
+      "Do not include Not Qualified rows in normal customer-facing results. Apply mandatory filters before output and omit confirmed failures.",
+      "Do not add markdown, commentary, tables, headings, code fences, extra keys, or fields outside this contract.",
+      "The runtime JSON schema is authoritative if any wording in the search strategy conflicts with this result contract."
+    ].join("\n");
+
     const profileData = {
       target_roles: clean(profile.target_roles),
       transferable_roles: clean(profile.transferable_roles),
@@ -327,6 +353,8 @@ Deno.serve(async (req: Request) => {
       (candidateEvidence ? JSON.stringify(candidateEvidence, null, 2) : "No Candidate Evidence analysis is available yet.") +
       "\n\nAI SEARCH STRATEGY\n" +
       (clean(profile.ai_search_prompt, 20000) || "No AI-generated search strategy has been approved yet. Use the structured customer profile and Candidate Evidence directly.") +
+      "\n\nMATCHPATH RESULT CONTRACT\n" +
+      resultContract +
       "\n\nSUPPRESS ALREADY SEEN\n" +
       JSON.stringify(suppress, null, 2) +
       "\n\nSearch for the strongest current openings now. Return structured results only.";
