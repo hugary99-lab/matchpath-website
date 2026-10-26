@@ -452,31 +452,27 @@ function updateApprovedBulkState(){
  const count=approvedSelectionIds().length;
  const label=$('#approvedSelectedCount');
  if(label)label.textContent=count+' selected';
- ['approvedResumeBatch','approvedSaveStatus','approvedMarkSubmitted'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+ ['approvedResumeBatch','approvedMarkSubmitted'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+ const dirty=Object.keys(state.approvedStatusDrafts).length,save=$('#approvedSaveStatus'),changes=$('#approvedChangeCount');
+ if(save)save.disabled=dirty===0;if(changes)changes.textContent=dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges;
 }
 function approvedResultsPage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='approved').sort((a,b)=>(b.fit_score??-1)-(a.fit_score??-1));
- let html=head(operatorEyebrow(),'Approved','Jobs authorized for application preparation but not yet submitted. Select multiple jobs to work as a batch.',customerPicker());
- if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ let html=head(operatorEyebrow(),'Approved','Prepare documents and record employer submissions for approved jobs.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer selected.</div>';
  html+=documentConsentPanel();
  const search=state.resultSearch.trim().toLowerCase();
- const rows=allRows.filter(j=>{
-  if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-  if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-  return true;
- });
+ const rows=allRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
  html+=resultFilterControls('approved',rows.length,allRows.length);
- const selectedCount=approvedSelectionIds().length;
- html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Download AI Resumes/Cover Letter</button><button class="btn outline small" id="approvedSaveStatus" data-action="approved-save-status" '+(selectedCount?'':'disabled')+'>Save Status</button><button class="btn outline small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>Mark Submitted</button></div></div>';
- if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs match the current filters.</strong></section>';
- html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
+ const selectedCount=approvedSelectionIds().length,dirty=Object.keys(state.approvedStatusDrafts).length;
+ html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span><span class="hint" id="approvedChangeCount">'+(dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges)+'</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Download documents</button><button class="btn" id="approvedSaveStatus" data-action="approved-save-status" '+(dirty?'':'disabled')+'>'+COPY.save+'</button><button class="btn outline small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>'+COPY.recordSubmission+'</button></div></div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs</strong>Approve a job from To be reviewed to prepare its documents.<div class="section"><button class="btn outline small" data-action="navigate" data-page="queue-new">Go to To be reviewed</button></div></section>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed');
   const res=app?docFor(app.id,'resume'):null,letter=app?docFor(app.id,'cover_letter'):null;
-  const draft=state.approvedStatusDrafts[j.id]||'approved';
-  const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-  return '<tr><td><input type="checkbox" data-approved-select data-job="'+esc(j.id)+'" '+(state.approvedSelections[j.id]?'checked':'')+' aria-label="Select '+esc(j.job_title)+'"></td><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):''))+'</small></td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td><select class="form-control" data-approved-status data-job="'+esc(j.id)+'"><option value="approved" '+(draft==='approved'?'selected':'')+'>Approved</option><option value="new" '+(draft==='new'?'selected':'')+'>To be reviewed</option><option value="skipped" '+(draft==='skipped'?'selected':'')+'>Skipped</option><option value="rejected" '+(draft==='rejected'?'selected':'')+'>Rejected</option></select></td><td><small>'+(res?'Resume ✓':'Resume missing')+'</small><small>'+(letter?'Cover letter ✓':'Cover letter missing')+'</small></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Open posting / Apply ↗</a></td></tr>';
- }).join('')+'</tbody></table></div></section>';
- return html;
+  const draft=state.approvedStatusDrafts[j.id]||'approved',qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  return '<tr><td><input type="checkbox" data-approved-select data-job="'+esc(j.id)+'" '+(state.approvedSelections[j.id]?'checked':'')+' aria-label="Select '+esc(j.job_title)+'"></td><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · <span class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+esc(money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):''))+'</span></small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+jobStatusSelect(j,draft,'data-approved-status')+'</td><td><div class="'+(!res||!letter?'document-needs-attention':'')+'">'+(res?'Resume ready':'Resume missing')+' · '+(letter?'Cover letter ready':'Cover letter missing')+'</div>'+(app?'<button class="btn ghost small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">'+(!res||!letter?'Add documents':COPY.viewDocuments)+'</button>':'')+'</td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a></td></tr>';
+ }).join('')+'</tbody></table></div></section>';return html;
 }
 function queuePage(status,title,description){
  return head(operatorEyebrow(),title,description,customerPicker())+jobResultsPanel(status);
