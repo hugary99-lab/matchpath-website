@@ -41,12 +41,12 @@ function renderAuth(mode='login'){
 function navItems(){
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Documents'],['profile','Search profile']];
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Document uploads']]
+  :[['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
@@ -250,7 +250,7 @@ function customerProfileViewPage(){
  const extra=state.account.role==='customer'
    ?'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>'
    :'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>';
- let html=head('User profile review',customerName(id)+' · Profile & Search Preferences','Review the saved customer profile used by MatchPath AI Job Search. Use the pencil icon to edit a section.',extra);
+ let html=head('Profile Review',customerName(id)+' · Profile & Search Preferences','Review the saved search preferences. Use the pencil icon to edit a section.',extra);
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
  html+=documentConsentPanel();
  const ro=(label,value)=>'<div class="field readonly-field"><label>'+esc(label)+'</label><div class="readonly-control">'+profileText(value)+'</div></div>';
@@ -337,7 +337,7 @@ function profilePage(){
  const headingExtra=operator
    ?'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>'
    :'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>';
- let html=head(operator?'Customer setup':'Customer setup',customerName(id)+' · Profile & Search Preferences','Select the pencil icon to edit a section.',headingExtra);
+ let html=head('Edit Profile',customerName(id)+' · Profile & Search Preferences','Select the pencil icon to edit a section.',headingExtra);
  html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
  '<section id="profile-section-search-focus" class="card profile-panel '+(isEditing('search-focus')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Search focus</h2>'+editIcon('search-focus','Search focus')+'</div>'+
  pArea('search-focus','target_roles','Target roles and seniority',p.target_roles)+
@@ -482,7 +482,7 @@ function queuePage(status,title,description){
 function newResultsPage(){return newReviewTriagePage();}
 function submittedResultsPage(){return queuePage('applied','Submitted','Applications with recorded employer submission confirmations.');}
 function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs you chose not to pursue.');}
-function allResultsPage(){return queuePage('all','All search results','All search results for this customer.');}
+function allResultsPage(){return queuePage('all','All results','All search results for this customer.');}
 function workbenchPage(){
  const id=currentCustomer(),a=matchingApps(id).filter(x=>x.status!=='closed').sort((x,y)=>x.status==='submitted'?1:y.status==='submitted'?-1:0);
  let html=head('Step 2 · Staff operations','Approved applications','Prepare documents and record confirmed employer submissions.',customerPicker());
