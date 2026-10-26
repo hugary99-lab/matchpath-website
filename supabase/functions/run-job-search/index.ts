@@ -85,8 +85,9 @@ Deno.serve(async (req: Request) => {
     const today = new Date().toISOString().slice(0, 10);
     const resultContract = [
       "MATCHPATH RESULT FORMAT — REQUIRED",
-      "Return one JSON object with exactly one top-level key: jobs.",
-      "jobs must be an array with at most 25 rows. If no eligible results meet the requested threshold, return {\"jobs\":[]}.",
+      "Return one JSON object with exactly two top-level keys: jobs and funnel.",
+      "jobs must be an array with at most 25 rows. If no eligible results meet the requested threshold, return an empty jobs array.",
+      "funnel must report distinct job-specific postings actually evaluated deeply enough to apply eligibility/scoring rules.",
       "Each job row must contain exactly these 15 fields:",
       "searched_at, job_title, company, requisition_id, location, work_arrangement, salary_min, salary_max, currency, job_url, source, fit_score, qualification_status, fit_reason, concerns",
       "Field rules:",
@@ -105,6 +106,9 @@ Deno.serve(async (req: Request) => {
       "- fit_reason: concise evidence-based explanation of the match.",
       "- concerns: concise material unknowns, risks, or verification items; use empty string when none.",
       "Do not include Not Qualified rows in normal customer-facing results. Apply mandatory filters before output and omit confirmed failures.",
+      "funnel must contain exactly: reviewed_count, rejected_mandatory_count, below_threshold_count, needs_verification_count, qualified_count, suppressed_existing_count, returned_count.",
+      "Funnel definitions: reviewed_count = distinct job-specific postings evaluated enough to apply filters/scoring; rejected_mandatory_count = confirmed mandatory-filter failures; below_threshold_count = passed mandatory filters but scored below the current profile minimum fit score; needs_verification_count = returned Needs Verification rows; qualified_count = returned Qualified rows; suppressed_existing_count = exact previously seen/applied postings identified and omitted; returned_count = jobs array length.",
+      "Do not count generic career pages, search-result snippets, or duplicate URLs as reviewed postings.",
       "Do not add markdown, commentary, tables, headings, code fences, extra keys, or fields outside this contract.",
       "The runtime JSON schema is authoritative if any wording in the search strategy conflicts with this result contract."
     ].join("\n");
@@ -124,7 +128,7 @@ Deno.serve(async (req: Request) => {
       career_goals: clean(profile.career_goals),
       mandatory_exclusions: clean(profile.exclusions),
       additional_search_instructions: clean(profile.search_instructions),
-      minimum_fit_score: Number(profile.min_fit_score ?? 90),
+      minimum_fit_score: Number(profile.min_fit_score ?? 80),
     };
 
     const { data: latestEvidence } = await admin.from("candidate_evidence_versions")
@@ -286,6 +290,23 @@ Deno.serve(async (req: Request) => {
     const schema = {
       type: "object",
       properties: {
+        funnel: {
+          type: "object",
+          properties: {
+            reviewed_count: { type: "integer", minimum: 0 },
+            rejected_mandatory_count: { type: "integer", minimum: 0 },
+            below_threshold_count: { type: "integer", minimum: 0 },
+            needs_verification_count: { type: "integer", minimum: 0 },
+            qualified_count: { type: "integer", minimum: 0 },
+            suppressed_existing_count: { type: "integer", minimum: 0 },
+            returned_count: { type: "integer", minimum: 0 }
+          },
+          required: [
+            "reviewed_count","rejected_mandatory_count","below_threshold_count",
+            "needs_verification_count","qualified_count","suppressed_existing_count","returned_count"
+          ],
+          additionalProperties: false
+        },
         jobs: {
           type: "array",
           maxItems: 25,
@@ -317,7 +338,7 @@ Deno.serve(async (req: Request) => {
           },
         },
       },
-      required: ["jobs"],
+      required: ["funnel","jobs"],
       additionalProperties: false,
     };
 
@@ -339,7 +360,8 @@ Deno.serve(async (req: Request) => {
       "- If a posting field such as salary, work arrangement, pension details or posting status is not verified, use an empty string, null salary, Unknown work arrangement, or Needs Verification as appropriate.",
       "- A job may be Qualified when mandatory criteria are satisfied by explicit customer/profile claims, Candidate Evidence, or the approved AI Search Strategy.",
       "- Use Needs Verification only when a material job requirement is not addressed anywhere in the supplied customer information, is genuinely contradictory, or the posting itself is unclear.",
-      "- Return credible matches at or above the customer's fit threshold, plus Needs Verification roles that could reach it if the unresolved point is confirmed.",
+      "- The current CUSTOMER PROFILE minimum_fit_score is authoritative and overrides any older numeric threshold stated inside the saved AI SEARCH STRATEGY.",
+      "- Return credible matches at or above the current profile fit threshold, plus Needs Verification roles that could reach it if the unresolved point is confirmed.",
       "- Do not return clear low-fit jobs.",
       "- Avoid jobs in the SUPPRESS list by exact URL or exact employer + requisition ID.",
       "- Keep fit_reason concise and evidence-based. Put unresolved requirements in concerns.",
@@ -429,6 +451,7 @@ Deno.serve(async (req: Request) => {
     try { parsed = JSON.parse(outputText); }
     catch { return respond({ error: "OpenAI returned invalid structured job results" }, 502); }
 
+    const rawFunnel = parsed?.funnel && typeof parsed.funnel === "object" ? parsed.funnel : {};
     const searchedAt = new Date().toISOString();
     const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : [])
       .filter((j: any) => {
@@ -456,9 +479,30 @@ Deno.serve(async (req: Request) => {
         concerns: clean(j.concerns),
       }));
 
+    const qualifiedCount = jobs.filter((j: any) => j.qualification_status === "Qualified").length;
+    const needsVerificationCount = jobs.length - qualifiedCount;
+    const rejectedMandatoryCount = Math.max(0, Number(rawFunnel.rejected_mandatory_count || 0));
+    const belowThresholdCount = Math.max(0, Number(rawFunnel.below_threshold_count || 0));
+    const suppressedExistingCount = Math.max(0, Number(rawFunnel.suppressed_existing_count || 0));
+    const reviewedCount = Math.max(
+      0,
+      Number(rawFunnel.reviewed_count || 0),
+      rejectedMandatoryCount + belowThresholdCount + suppressedExistingCount + qualifiedCount + needsVerificationCount
+    );
+    const funnel = {
+      reviewed_count: Math.round(reviewedCount),
+      rejected_mandatory_count: Math.round(rejectedMandatoryCount),
+      below_threshold_count: Math.round(belowThresholdCount),
+      needs_verification_count: needsVerificationCount,
+      qualified_count: qualifiedCount,
+      suppressed_existing_count: Math.round(suppressedExistingCount),
+      returned_count: jobs.length
+    };
+
     return respond({
       ok: true,
       jobs,
+      funnel,
       found: jobs.length,
       model: raw.model || Deno.env.get("OPENAI_SEARCH_MODEL") || "gpt-6.1-sol",
       response_id: raw.id || null,
