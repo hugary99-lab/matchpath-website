@@ -43,10 +43,10 @@ test('saving onboarding does not automatically run AI or submit applications', (
   assert.doesNotMatch(save, /run-job-search|staff_set_application_status|apply-ai-prompt|openai\.com/);
 });
 
-test('reference resumes are limited to five and use immutable private PDF paths', () => {
+test('reference resumes are limited to five and use immutable private PDF/Word paths', () => {
   assert.match(upload, /existingCount\+list\.length>5/);
-  assert.match(upload, /await validatePdf\(file\)/);
-  assert.match(upload, /crypto\.randomUUID\(\)\+'\.pdf'/);
+  assert.match(upload, /await validateResumeFile\(file\)/);
+  assert.match(upload, /crypto\.randomUUID\(\)\+'\.'\+validated\.extension/);
   assert.match(upload, /storage\.from\('matchpath-profiles'\)\.upload\(/);
   assert.match(upload, /upsert:false/);
 });
