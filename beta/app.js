@@ -140,7 +140,7 @@ function canOperateUi(){return state.account?.role==='admin'||state.account?.rol
 function operatorEyebrow(){return state.account?.role==='customer'?'DIY job search':'Staff operations'}
 function profileText(value,fallback='Not specified'){const v=String(value??'').trim();return v?esc(v).replaceAll('\n','<br>'):esc(fallback)}
 function profileEditIcon(section,label){return state.account?.role==='admin'?'<button class="icon-btn profile-edit-icon" type="button" data-action="edit-profile-section" data-section="'+esc(section)+'" aria-label="Edit '+esc(label)+'" title="Edit '+esc(label)+'">✎</button>':''}
-function filteredQualifiedJobs(){const id=currentCustomer(),p=currentProfile();return matchingJobs(id).filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=(p?.min_fit_score??90))}
+function filteredQualifiedJobs(){const id=currentCustomer(),p=currentProfile();return matchingJobs(id).filter(j=>j.qualification_status==='Qualified'&&j.fit_score!=null&&j.fit_score>=(p?.min_fit_score??80))}
 function dashboard(){
  const role=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role, id=currentCustomer();
  const operator=role!=='customer'||isDiyCustomer();
@@ -148,24 +148,39 @@ function dashboard(){
  const ready=a.filter(x=>x.status==='ready').length,submitted=a.filter(x=>x.status==='submitted').length;
  const matches=filteredQualifiedJobs();
  const pending=matches.filter(x=>x.review_status==='pending').length;
- const metrics=!operator?[['Jobs screened',j.length],['To review',pending],['Applications applied',submitted],['Qualified matches',matches.length]]:[['Jobs evaluated',j.length],['Approved queue',a.filter(x=>!['submitted','closed'].includes(x.status)).length],['Documents ready',ready],['Submitted',submitted]];
+ const metrics=!operator?[['Jobs in tracker',j.length],['To review',pending],['Applications applied',submitted],['Qualified matches',matches.length]]:[['Jobs in tracker',j.length],['Approved queue',a.filter(x=>!['submitted','closed'].includes(x.status)).length],['Documents ready',ready],['Submitted',submitted]];
+ const aiRuns=state.runs.filter(x=>x.customer_id===id&&x.run_type==='ai_search');
+ const sumRun=(k)=>aiRuns.reduce((n,x)=>n+Number(x[k]||0),0);
+ const funnelMetrics=[
+  ['AI reviewed',sumRun('ai_reviewed_count')],
+  ['Rejected by filters',sumRun('rejected_mandatory_count')],
+  ['Below fit threshold',sumRun('below_threshold_count')],
+  ['Needs verification',sumRun('needs_verification_count')],
+  ['Qualified',sumRun('qualified_count')],
+  ['New imported',sumRun('new_rows')]
+ ];
  const eyebrow=!operator?'My career search':role==='customer'?'DIY job search':role==='staff'?'Staff operations':'Administration';
  const description=!operator?'Your job matches and application activity, in one place.':role==='customer'?'Review opportunities, prepare your documents, apply, and track submissions from one workflow.':'Select a customer, review imported jobs, authorize the right opportunities, prepare documents, and track applications.';
  let html=head(eyebrow,'Good '+(new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening')+', '+(state.account.full_name?.split(' ')[0]||'there'),description,role==='customer'?'':customerPicker());
  html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';
+ if(id){
+  html+='<section class="section"><div class="space section-head"><div><div class="eyebrow">AI SEARCH FUNNEL</div><h2>Search activity</h2></div><span class="badge neutral">'+aiRuns.length+' AI run'+(aiRuns.length===1?'':'s')+'</span></div>'+
+   (aiRuns.length?'<div class="grid">'+funnelMetrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>':'<div class="card empty"><strong>No AI search runs logged yet</strong>The next Run AI Job Search will record the search funnel automatically.</div>')+
+  '</section>';
+ }
  if(!id&&role!=='customer')return html+'<div class="card section empty"><strong>No assigned customers yet</strong>Admin can assign customers in Accounts & access.</div>';
  const nextPage=!operator?'matches':role==='customer'?'queue-new':'import';
  const nextLabel=!operator?'Review matches':'Job Search';
  html+='<div class="section grid two"><div class="card"><h2>'+(!operator?'What happens next':'Daily workflow')+'</h2><ul class="checklist">'+(!operator?'<li>Review your verified job matches</li><li>Approve the jobs you want pursued</li><li>Access documents and submission updates</li>':role==='customer'?'<li>Review new job results</li><li>Approve or skip opportunities</li><li>Prepare/download tailored documents</li><li>Apply and record submission confirmation</li>':'<li>Choose a customer and run AI Job Search or import a CSV</li><li>Review and authorize the right jobs</li><li>Prepare job-specific documents</li><li>Apply on employer site and record confirmation</li>')+'</ul><button class="btn" data-action="navigate" data-page="'+nextPage+'">'+nextLabel+'</button></div><div class="card"><h2>Recent applications</h2>'+(a.length?a.slice(0,4).map(x=>{const job=byId(state.jobs,x.job_id);return '<div class="detail space"><div><div class="title">'+esc(job?.job_title||x.application_code)+'</div><div class="sub">'+esc(job?.company||'')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty"><strong>No applications yet</strong>Approved jobs will appear here.</div>')+'</div></div>';
  if(operator){html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View Customer Profile</h2><p class="muted">Review the selected customer\'s saved search strategy, preferences and AI search controls.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View Customer Profile</button></div></section>'}
- if(role!=='customer'){html+='<section class="section card"><h2>Last search batches</h2>'+(state.runs.filter(x=>x.customer_id===id).slice(0,5).map(x=>'<p><span class="pill">'+esc(x.external_id)+'</span> · '+x.new_rows+' new · '+x.duplicate_rows+' duplicates · '+fmtDate(x.created_at)+'</p>').join('')||'<p class="muted">No imports yet.</p>')+'</section>'}
+ if(role!=='customer'){html+='<section class="section card"><h2>Last search batches</h2>'+(state.runs.filter(x=>x.customer_id===id).slice(0,5).map(x=>'<p><span class="pill">'+esc(x.external_id)+'</span> · '+(x.run_type==='ai_search'?(Number(x.ai_reviewed_count||0)+' reviewed · '+Number(x.qualified_count||0)+' qualified · '+Number(x.new_rows||0)+' new · '+Number(x.duplicate_rows||0)+' duplicates'):(Number(x.new_rows||0)+' new · '+Number(x.duplicate_rows||0)+' duplicates'))+' · '+fmtDate(x.created_at)+'</p>').join('')||'<p class="muted">No search runs yet.</p>')+'</section>'}
  return html;
 }
 function matchesPage(){
  let rows=filteredQualifiedJobs(), pending=rows.filter(x=>x.review_status==='pending');
  let html=head('Customer portal','Review opportunities','Only matches meeting your approved fit threshold appear here. Approve each posting before staff prepare and submit an application.');
  if(!rows.length)return html+'<section class="card empty"><strong>No qualified matches available</strong>Staff will add results after the next search batch.</section>';
- html+='<div class="space section-head"><h2>'+pending.length+' awaiting your decision</h2><span class="badge neutral">Fit ≥ '+esc(currentProfile()?.min_fit_score??90)+'</span></div>';
+ html+='<div class="space section-head"><h2>'+pending.length+' awaiting your decision</h2><span class="badge neutral">Fit ≥ '+esc(currentProfile()?.min_fit_score??80)+'</span></div>';
  html+='<div class="flex-col">'+rows.map(j=>'<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score)+'/100</span></div><p>'+esc(j.fit_reason)+'</p>'+(j.concerns?'<p class="hint">Considerations: '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span>'+statusBadge(j.review_status)+'</div><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a>'+(j.review_status==='pending'?'<button class="btn small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="approved">Approve</button><button class="btn ghost small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="rejected">Reject</button>':'<span class="hint">Decision recorded '+fmtDate(j.decided_at)+'</span>')+'</div></article>').join('')+'</div>';
  return html;
 }
@@ -219,7 +234,7 @@ function customerProfileViewPage(){
  ro('LinkedIn public profile URL',p.linkedin_url)+
  ro('Mandatory requirements / hard exclusions',p.exclusions)+
  ro('Additional AI search instructions',p.search_instructions)+
- '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??90)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
+ '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??80)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
  '<div class="profile-prompt-state"><strong>'+(p.ai_search_prompt?'AI search prompt exists':'AI search prompt not created yet')+'</strong><span class="hint">'+(promptNeedsUpdate?(p.ai_search_prompt?'Profile or reference resumes changed. Update the AI search prompt before the next search.':'Create the AI search prompt from this profile and its original/reference resumes.'):'AI search prompt is current for this profile.')+'</span></div>'+
  '</section>'+
  '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">⬆ Upload resume</button></div>':'')+'</div>'+
@@ -308,7 +323,7 @@ function profilePage(){
  pField('ai-search-controls','linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
  pArea('ai-search-controls','exclusions','Mandatory requirements / hard exclusions',p.exclusions,'Only true dealbreakers belong here.')+
  pArea('ai-search-controls','search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+
- '<div class="form-row">'+pField('ai-search-controls','min_fit_score','Minimum fit score',p.min_fit_score??90,'number','min="0" max="100" required')+
+ '<div class="form-row">'+pField('ai-search-controls','min_fit_score','Minimum fit score',p.min_fit_score??80,'number','min="0" max="100" required')+
  '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
  saveButton('ai-search-controls','Save AI Search Controls')+
  '</section>'+
@@ -322,7 +337,7 @@ function importPage(){
  let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',extra);
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  const hasInstructions=[p.target_roles,p.search_instructions,p.career_goals,p.preferred_locations,p.industries].some(v=>String(v||'').trim());
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><div class="stack"><button class="btn outline small" data-action="view-ai-prompt" '+(hasInstructions?'':'disabled')+'>View AI Prompt</button><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??90)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><div class="stack"><button class="btn outline small" data-action="view-ai-prompt" '+(hasInstructions?'':'disabled')+'>View AI Prompt</button><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??80)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
  html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View Customer Profile</h2><p class="muted">Review the saved profile and search preferences before running or importing a search.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View Customer Profile</button></div></section>';
  html+='<section class="card section"><h2>Manual CSV Import</h2><p class="muted">Keep the existing manual path for ChatGPT/analyst search batches or recovery workflows.</p><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are assigned by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
  if(state.csvPreview){
@@ -1029,20 +1044,25 @@ async function handleClick(target){
   const result=await response.json().catch(()=>({}));
   if(!response.ok||!result.ok)throw Error(result.error||'AI Job Search failed (HTTP '+response.status+').');
   const rows=Array.isArray(result.jobs)?result.jobs:[];
-  if(!rows.length){
-   openDialog('No matching openings found','<p>The AI search completed, but no current openings met the saved search criteria.</p>');
-   notice('AI Job Search completed with no new qualifying openings.');
-   return;
-  }
-  const {data,error}=await state.sb.rpc('import_search_results_v2',{p_customer:customer,p_rows:rows});
+  const funnel=result.funnel&&typeof result.funnel==='object'?result.funnel:{};
+  const metrics={...funnel,model:result.model||'',response_id:result.response_id||''};
+  const {data,error}=await state.sb.rpc('import_ai_search_results_v3',{p_customer:customer,p_rows:rows,p_metrics:metrics});
   if(error)throw error;
   await loadData(state.me);
+  const reviewed=Number(data?.ai_reviewed_count||funnel.reviewed_count||0);
+  const qualified=Number(data?.qualified_count||funnel.qualified_count||0);
+  if(!rows.length){
+   state.page='overview';render();
+   openDialog('No matching openings found','<p>The AI search reviewed '+reviewed+' job posting'+(reviewed===1?'':'s')+' but returned no current openings meeting the saved criteria and fit threshold.</p><p class="hint">The search funnel has been logged on Overview.</p>');
+   notice('AI Job Search completed: '+reviewed+' reviewed, '+qualified+' qualified, 0 returned.');
+   return;
+  }
   if((data?.new_rows||0)>0){
    state.page='queue-new';render();
-   notice((data.new_rows||0)+' new job'+((data.new_rows||0)===1?'':'s')+' added to To be reviewed. '+(data.duplicate_rows||0)+' duplicate'+((data.duplicate_rows||0)===1?'':'s')+' skipped.');
+   notice(reviewed+' reviewed · '+qualified+' qualified · '+(data.new_rows||0)+' new job'+((data.new_rows||0)===1?'':'s')+' added to To be reviewed · '+(data.duplicate_rows||0)+' duplicate'+((data.duplicate_rows||0)===1?'':'s')+' skipped.');
   }else{
-   state.page='import';render();
-   openDialog('No new openings','<p>The AI search found '+rows.length+' matching posting'+(rows.length===1?'':'s')+', but all were already in MatchPath.</p>');
+   state.page='overview';render();
+   openDialog('No new openings','<p>The AI search reviewed '+reviewed+' job posting'+(reviewed===1?'':'s')+' and returned '+rows.length+' matching posting'+(rows.length===1?'':'s')+', but all returned jobs were already in MatchPath.</p><p class="hint">The full search funnel is logged on Overview.</p>');
   }
   return;
  }
