@@ -415,6 +415,7 @@ Deno.serve(async (req: Request) => {
         store: false,
         reasoning: { effort: "medium" },
         tools: [{ type: "web_search", search_context_size: "medium" }],
+        include: ["web_search_call.action.sources"],
         input: [
           { role: "system", content: system },
           { role: "user", content: userPrompt },
@@ -431,6 +432,17 @@ Deno.serve(async (req: Request) => {
     });
 
     const raw = await openaiResponse.json().catch(() => ({}));
+    const webSearchCalls = Array.isArray(raw?.output)
+      ? raw.output.filter((item: any) => item?.type === "web_search_call")
+      : [];
+    const sourceUrls = new Set<string>();
+    for (const call of webSearchCalls) {
+      const sources = Array.isArray(call?.action?.sources) ? call.action.sources : [];
+      for (const source of sources) {
+        const url = typeof source?.url === "string" ? source.url.trim() : "";
+        if (url) sourceUrls.add(url);
+      }
+    }
     if (!openaiResponse.ok) {
       const detail = raw?.error?.message || ("OpenAI search failed (HTTP " + openaiResponse.status + ")");
       return respond({ error: detail }, 502);
@@ -503,6 +515,8 @@ Deno.serve(async (req: Request) => {
       ok: true,
       jobs,
       funnel,
+      web_search_call_count: webSearchCalls.length,
+      web_sources_retrieved_count: sourceUrls.size,
       found: jobs.length,
       model: raw.model || Deno.env.get("OPENAI_SEARCH_MODEL") || "gpt-6.1-sol",
       response_id: raw.id || null,
