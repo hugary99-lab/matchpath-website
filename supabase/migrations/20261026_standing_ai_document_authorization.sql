@@ -130,6 +130,16 @@ begin
         if not v_authorization.allow_managed_submission or v_tier<>'full_service' then
           raise exception 'Customer has not authorized managed application submission';
         end if;
+        -- A standing document permission is not permission to apply to unapproved jobs.
+        if coalesce((
+          select e.details->>'decision' from public.audit_events e
+          where e.customer_id=new.customer_id and e.actor_id=new.customer_id
+            and e.action='job_decision'
+            and e.details->>'job'=new.job_id::text
+          order by e.created_at desc,e.id desc limit 1
+        ),'')<>'approved' then
+          raise exception 'Customer must approve this specific job before staff submission';
+        end if;
       elsif v_actor_role='customer' then
         if (select auth.uid())<>new.customer_id or v_tier<>'diy' then
           raise exception 'Customer can confirm only their own DIY applications';
