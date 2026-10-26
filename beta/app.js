@@ -979,6 +979,7 @@ async function handleClick(target){
   await loadData(state.me);notice('Document authorization withdrawn.');return;
  }
  if(action==='approved-mark-submitted'){
+  if(draftCount()>0)throw Error('Save or discard your status changes before recording submissions.');
   if(!canRecordSubmission())throw Error('Standing customer document authorization for this submission mode is required.');
   if(!canOperateUi())throw Error('Not authorized.');
   const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
@@ -1102,6 +1103,7 @@ async function handleClick(target){
   if(error)throw error;await loadData();notice('Application status updated.');return;
  }
  if(action==='submit'){
+  if(draftCount()>0)throw Error('Save or discard your changes before recording a submission.');
   const a=byId(state.apps,target.dataset.app);if(!a)throw Error('Application not found');
   openDialog('Confirm actual job application','<p class="warning">Only mark as submitted after completing the employer application. Record a confirmation/reference or verifiable submission acknowledgment.</p><form id="submitForm" data-app="'+esc(a.id)+'">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm submission</button></form>');return;
  }
@@ -1447,6 +1449,7 @@ document.addEventListener('change',async e=>{
   }
  }catch(err){notice(errorMsg(err),true)}
 });
+window.addEventListener('beforeunload',e=>{if(!draftCount())return;e.preventDefault();e.returnValue='';});
 $('#logoutBtn').addEventListener('click',async()=>{if(!confirmDiscardChanges())return;if(state.sb)await state.sb.auth.signOut();state.me=null;state.account=null;state.page='overview';renderAuth('login');notice('Signed out.')});
 $('#dialogClose').addEventListener('click',closeDialog);
 $('#dialog').addEventListener('click',e=>{if(e.target.id==='dialog')closeDialog()});
