@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="field-tool-icon" type="button" data-action="expand-field" data-field="'+esc(id)+'" aria-label="Expand editor" title="Expand editor">⛶</button><button class="field-tool-icon" type="button" data-action="voice-field" data-field="'+esc(id)+'" aria-label="Voice input" title="Voice input">🎤</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],documentAuthorizations:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -66,6 +66,25 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+const currentDocumentAuthorization=()=>state.documentAuthorizations.find(a=>a.customer_id===currentCustomer()&&!a.revoked_at)||null;
+function canRecordSubmission(){const a=currentDocumentAuthorization(),r=state.account?.role,t=currentProfile()?.service_tier;return !!a&&(r==='customer'&&t==='diy'||(r==='admin'||r==='staff')&&t==='full_service'&&a.allow_managed_submission)}
+function documentConsentPanel(){
+ const id=currentCustomer();if(!id)return '';
+ const a=currentDocumentAuthorization(),r=state.account?.role,full=currentProfile()?.service_tier==='full_service',managed=!!a?.allow_managed_submission;
+ let html='<section class="card section"><div class="space"><h2>AI document authorization</h2><span class="badge '+(a?'neutral':'warn')+'">'+(a?'Authorized':'Authorization required')+'</span></div>';
+ if(r!=='customer')return html+'<p class="muted">'+(a?'Customer accepted on '+fmtDate(a.accepted_at)+(managed?'; staff submission authorized.':'; staff submission not authorized.'):'Awaiting customer consent; no new application documents or submissions are permitted.')+'</p></section>';
+ html+='<p>MatchPath can prepare truthful, ATS-friendly, job-tailored resumes and cover letters without requesting approval of each document. ATS formatting does not guarantee interviews.</p>';
+ html+='<p class="hint">Preparing documents may involve processing your career profile, resume files and candidate evidence with AI service providers. MatchPath must not invent qualifications. You may review files and revoke consent for future use.</p>';
+ html+='<p class="hint">'+esc("I authorize MatchPath to process my career profile, provided resume files, and candidate evidence with AI providers to prepare truthful, ATS-friendly, job-tailored resumes and cover letters. MatchPath may use these documents for jobs I authorize without asking me to approve each document. I understand that ATS compatibility does not guarantee an interview and that I may revoke this authorization for future use.")+'</p>';
+ if(full)html+='<p class="hint">'+esc("For full-service jobs I authorize, I separately permit authorized MatchPath staff to submit AI-tailored application documents on my behalf following a human quality check. MatchPath will record actual employer submission confirmation.")+'</p>';
+ if(a)html+='<p class="hint">Authorized '+fmtDate(a.accepted_at)+(full?(managed?' · Staff submission authorized':' · Staff submission not authorized'):' · DIY self-application')+'</p><button type="button" class="btn ghost small" data-action="revoke-document-consent">Withdraw authorization</button>';
+ if(!a||(full&&!managed)){
+  html+='<form id="documentConsentForm" class="section"><label class="check-option"><input id="consentConfirm" type="checkbox" required> I authorize MatchPath to generate and use AI-tailored application documents without individual resume approval under these terms.</label>';
+  if(full)html+='<label class="check-option"><input id="consentManaged" type="checkbox"> I separately authorize MatchPath staff to submit documents for jobs I approve after human quality checks, recording employer confirmation.</label>';
+  html+='<button class="btn" type="submit">'+(a?'Update authorization':'Authorize AI document preparation')+'</button></form>';
+ }
+ return html+'</section>';
+}
 function latestCandidateEvidence(customer=currentCustomer()){return state.candidateEvidence.filter(x=>x.customer_id===customer).sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
 function latestSearchStrategy(customer=currentCustomer()){return state.searchStrategies.filter(x=>x.customer_id===customer).sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
 function currentSearchStrategy(customer=currentCustomer()){return state.searchStrategies.filter(x=>x.customer_id===customer&&x.status==='current').sort((a,b)=>Number(b.version)-Number(a.version))[0]||null}
@@ -127,7 +146,7 @@ function profileValuesChanged(values,p=currentProfile()){
   ['preferred_locations',values.preferred_locations,p.preferred_locations],['salary_min',values.salary_min,p.salary_min],
   ['work_preference',values.work_preference,p.work_preference],['exclusions',values.exclusions,p.exclusions],
   ['search_instructions',values.search_instructions,p.search_instructions],['linkedin_url',values.linkedin_url,p.linkedin_url],
-  ['salary_target',values.salary_target,p.salary_target],['service_tier',values.service_tier,p.service_tier],
+  ['salary_target',values.salary_target,p.salary_target],['service_tier',values.service_tier??p.service_tier,p.service_tier],
   ['salary_currency',values.salary_currency,p.salary_currency],['transferable_roles',values.transferable_roles,p.transferable_roles],
   ['employment_types',values.employment_types,p.employment_types],['industries',values.industries,p.industries],
   ['relocation_preferences',values.relocation_preferences,p.relocation_preferences],['pension_preferences',values.pension_preferences,p.pension_preferences],
@@ -164,7 +183,7 @@ function dashboard(){
  const eyebrow=!operator?'My career search':role==='customer'?'DIY job search':role==='staff'?'Staff operations':'Administration';
  const description=!operator?'Your job matches and application activity, in one place.':role==='customer'?'Review opportunities, prepare your documents, apply, and track submissions from one workflow.':'Select a customer, review imported jobs, authorize the right opportunities, prepare documents, and track applications.';
  let html=head(eyebrow,'Good '+(new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening')+', '+(state.account.full_name?.split(' ')[0]||'there'),description,role==='customer'?'':customerPicker());
- html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';
+ html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';if(id)html+=documentConsentPanel();
  if(id){
   html+='<section class="section"><div class="space section-head"><div><div class="eyebrow">AI SEARCH FUNNEL</div><h2>Search activity</h2></div><span class="badge neutral">'+aiRuns.length+' AI run'+(aiRuns.length===1?'':'s')+'</span></div>'+
    (aiRuns.length?'<div class="grid">'+funnelMetrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>':'<div class="card empty"><strong>No AI search runs logged yet</strong>The next Run AI Job Search will record the search funnel automatically.</div>')+
@@ -213,6 +232,7 @@ function customerProfileViewPage(){
    :'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
  let html=head('User profile review',customerName(id)+' · Profile & Search Preferences','Review the saved customer profile used by MatchPath AI Job Search. Fields are read-only until an Admin selects Edit.',extra);
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
+ html+=documentConsentPanel();
  const ro=(label,value)=>'<div class="field readonly-field"><label>'+esc(label)+'</label><div class="readonly-control">'+profileText(value)+'</div></div>';
  html+='<div class="profile-grid profile-review-grid">'+
  '<section class="card profile-panel"><div class="profile-view-head"><h2>Search focus</h2>'+profileEditIcon('search-focus','Search focus')+'</div>'+
@@ -432,6 +452,7 @@ function approvedResultsPage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='approved').sort((a,b)=>(b.fit_score??-1)-(a.fit_score??-1));
  let html=head(operatorEyebrow(),'Approved','Jobs authorized for application preparation but not yet submitted. Select multiple jobs to work as a batch.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ html+=documentConsentPanel();
  const search=state.resultSearch.trim().toLowerCase();
  const rows=allRows.filter(j=>{
   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
@@ -525,14 +546,14 @@ async function loadData(knownUser=null){
  const account=records[0];
  if(!account)throw Error('No account record returned.');
  state.account=account;
- const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes','candidate_evidence_versions','search_strategy_versions','general_resume_versions'];
+ const keys=['accounts','customer_profiles','staff_assignments','jobs','applications','document_versions','submitted_documents','search_runs','reference_resumes','document_authorizations','candidate_evidence_versions','search_strategy_versions','general_resume_versions'];
  const tables=await Promise.all(keys.map(async table=>{
    const url=config.supabaseUrl+'/rest/v1/'+table+'?select=*&limit='+(table==='jobs'?1000:500);
    const response=await within(fetch(url,{headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+state.loginToken,Accept:'application/json'},signal:AbortSignal.timeout(12000)}),'Loading '+table,12000);
    if(!response.ok)throw Error('Loading '+table+' HTTP '+response.status+': '+(await response.text()).slice(0,250));
    return await response.json();
  }));
- [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes,state.candidateEvidence,state.searchStrategies,state.generalResumes]=tables;
+ [state.accounts,state.profiles,state.assignments,state.jobs,state.apps,state.docs,state.submitted,state.runs,state.referenceResumes,state.documentAuthorizations,state.candidateEvidence,state.searchStrategies,state.generalResumes]=tables;
  state.jobs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.apps.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
  state.runs.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -962,7 +983,15 @@ async function handleClick(target){
   await loadData(state.me);state.page='queue-approved';render();
   notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
  }
+ if(action==='revoke-document-consent'){
+  if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers may revoke their own consent.');
+  if(!confirm('Withdraw permission for future AI application document preparation and use? Existing submissions remain recorded.'))return;
+  const {error}=await state.sb.rpc('customer_set_document_authorization',{p_accept:false,p_allow_staff_submit:false});
+  if(error)throw error;
+  await loadData(state.me);notice('Document authorization withdrawn.');return;
+ }
  if(action==='approved-mark-submitted'){
+  if(!canRecordSubmission())throw Error('Standing customer document authorization for this submission mode is required.');
   if(!canOperateUi())throw Error('Not authorized.');
   const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
   const rows=ids.map(id=>{const job=byId(state.jobs,id);const app=state.apps.find(a=>a.job_id===id&&a.status!=='closed');return {job,app}}).filter(x=>x.job&&x.app);
@@ -1151,8 +1180,16 @@ async function handleSubmit(form){
   if(loaded)notice('Signed in securely.');
   return;
  }
+ if(type==='documentConsentForm'){
+  if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers can authorize their own document use.');
+  if(!$('#consentConfirm')?.checked)throw Error('Accept the disclosure to continue.');
+  const {error}=await state.sb.rpc('customer_set_document_authorization',{p_accept:true,p_allow_staff_submit:!!$('#consentManaged')?.checked});
+  if(error)throw error;
+  await loadData(state.me);notice('Standing AI document authorization saved. Individual resume approval is not required.');return;
+ }
  if(type==='profileForm'){
   const values=profileFormValues();
+  if(state.account?.role==='customer')delete values.service_tier;
   const role=state.account.role;
   const operator=role!=='customer';
   const customer=currentCustomer();if(!customer)throw Error('Customer unavailable.');
@@ -1286,6 +1323,7 @@ async function validateResumeFile(file){
 async function uploadDocument(appId,kind,file){
  const app=byId(state.apps,appId);if(!app||app.customer_id!==currentCustomer()||!['approved','preparing','ready','blocked'].includes(app.status))throw Error('Application cannot receive documents');
  if(!['resume','cover_letter'].includes(kind))throw Error('Invalid document type');
+ if(!currentDocumentAuthorization())throw Error('Customer standing consent is required before application documents can be prepared.');
  await validatePdf(file);
  const path=app.customer_id+'/'+app.id+'/'+crypto.randomUUID()+'.pdf';
  const {error}=await state.sb.storage.from('matchpath-documents').upload(path,file,{contentType:'application/pdf',upsert:false});

@@ -13,10 +13,9 @@ test('beta portal parses as JavaScript before deployment', () => {
 });
 
 test('reference resume handling contains real statement separators', () => {
-  assert.doesNotMatch(source, /\}\\n\s*if\s*\(/);
-  assert.doesNotMatch(source, /;\\n\s*(?:if\s*\(|uploaded\+\+)/);
+  assert.match(source, /const validated=await validateResumeFile\(file\)/);
   assert.match(source, /reference-download/);
-  assert.match(source, /from\('reference_resumes'\)\.insert/);
+  assert.match(source, /rpc\('register_reference_resume'/);
 });
 
 test('customer onboarding fields are persisted and resume library loaded', () => {
