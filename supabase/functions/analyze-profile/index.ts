@@ -274,6 +274,9 @@ Deno.serve(async (req: Request) => {
         "Never invent credentials, skills, systems, industries or achievements.",
         "Use Needs Verification only for genuine ambiguity, contradiction, or a material job requirement that the resumes/profile do not address—not merely because a claimed skill lacks detailed bullets.",
         "The final prompt_text will drive current job-search research. It must require official employer/ATS sources first, current/open postings, mandatory filters before scoring, evidence-based fit scoring, exact employer + requisition suppression, and Needs Verification for material uncertainty.",
+        "Include a clearly labeled RESULT FORMAT section in prompt_text requiring the MatchPath 15-field result contract: searched_at, job_title, company, requisition_id, location, work_arrangement, salary_min, salary_max, currency, job_url, source, fit_score, qualification_status, fit_reason, concerns.",
+        "The RESULT FORMAT section must state: work_arrangement is Remote/Hybrid/Onsite/Unknown; missing salary values are null; missing requisition ID or currency is an empty string; fit_score is an integer 0-100; normal qualification_status is Qualified or Needs Verification; job_url is a direct official HTTPS job-specific URL; fit_reason is concise and evidence-based; concerns contains material unknowns or an empty string.",
+        "The RESULT FORMAT section must require structured JSON only with one top-level jobs array, at most 25 rows, no markdown or extra fields, and an empty jobs array when no eligible result meets the threshold.",
         "Do not include customer name or contact information.",
         "Return structured JSON only."
       ].join("\n");
