@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="field-tool-icon" type="button" data-action="expand-field" data-field="'+esc(id)+'" aria-label="Expand editor" title="Expand editor">⛶</button><button class="field-tool-icon" type="button" data-action="voice-field" data-field="'+esc(id)+'" aria-label="Voice input" title="Voice input">🎤</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],documentAuthorizations:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],documentAuthorizations:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],resultStatusDrafts:{},profileDirty:false,aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -41,12 +41,12 @@ function renderAuth(mode='login'){
 function navItems(){
  const r=state.account.role==='admin'&&state.workspaceView==='staff'?'staff':state.account.role;
  if(r==='customer'){
-  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Documents'],['profile','Search profile']];
+  if(isDiyCustomer())return [['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Documents'],['profile','Search profile']];
   return [['overview','Overview'],['matches','Review job matches'],['applications','My applications'],['profile','Search profile']];
  }
  return r==='staff'
-  ?[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads']]
-  :[['overview','Overview'],['customer-profile','User Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All search results'],['documents','Document uploads'],['admin','Accounts & access']];
+  ?[['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Document uploads']]
+  :[['overview','Overview'],['customer-profile','Profile Review'],['profile-analysis','Profile Analysis'],['import','Job Search'],['queue-new','To be reviewed'],['queue-approved','Approved'],['queue-submitted','Submitted'],['queue-skipped','Skipped'],['queue-all','All results'],['documents','Document uploads'],['admin','Accounts & access']];
 }
 function buildNav(){
  $('#sidebar').classList.remove('hidden');$('#logoutBtn').classList.remove('hidden');
@@ -66,6 +66,26 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+// Text links to external employer sites use ↗; routine buttons use verbs only.
+const COPY=Object.freeze({
+ save:'Save changes',openPosting:'Open posting ↗',viewDocuments:'View documents',
+ viewPrompt:'View AI search prompt',updatePrompt:'Update AI search prompt',
+ runSearch:'Run AI job search',recordSubmission:'Record submission',
+ confirmSubmission:'Confirm submission',emptyChanges:'No unsaved changes'
+});
+const JOB_STATUSES=Object.freeze([['new','To be reviewed'],['approved','Approved'],['skipped','Skipped'],['rejected','Rejected']]);
+function jobStatusSelect(job,value,dataAttribute,allowed=['new','approved','skipped','rejected'],disabled=false){
+ return '<select class="form-control" '+dataAttribute+' data-job="'+esc(job.id)+'" aria-label="Status for '+esc(job.job_title)+'" '+(disabled?'disabled':'')+'>'+
+ JOB_STATUSES.filter(([v])=>allowed.includes(v)).map(([v,label])=>'<option value="'+v+'" '+(value===v?'selected':'')+'>'+label+'</option>').join('')+'</select>';
+}
+function draftCount(){return Object.keys(state.reviewDrafts).length+Object.keys(state.approvedStatusDrafts).length+Object.keys(state.resultStatusDrafts).length+(state.profileDirty?1:0)}
+function confirmDiscardChanges(){return !draftCount()||confirm('You have unsaved changes. Discard them?')}
+function clearStatusDrafts(){state.reviewDrafts={};state.approvedStatusDrafts={};state.resultStatusDrafts={};state.approvedSelections={};state.profileDirty=false}
+function updateResultSaveState(){
+ const count=Object.keys(state.resultStatusDrafts).length,b=$('#saveResultChanges'),n=$('#resultChangeCount');
+ if(b)b.disabled=count===0;
+ if(n)n.textContent=count?count+' unsaved change'+(count===1?'':'s'):COPY.emptyChanges;
+}
 const currentDocumentAuthorization=()=>state.documentAuthorizations.find(a=>a.customer_id===currentCustomer()&&!a.revoked_at)||null;
 function canRecordSubmission(){const a=currentDocumentAuthorization(),r=state.account?.role,t=currentProfile()?.service_tier;return !!a&&(r==='customer'&&t==='diy'||(r==='admin'||r==='staff')&&t==='full_service'&&a.allow_managed_submission)}
 function documentConsentPanel(){
@@ -181,37 +201,37 @@ function dashboard(){
   ['New imported',sumRun('new_rows')]
  ];
  const eyebrow=!operator?'My career search':role==='customer'?'DIY job search':role==='staff'?'Staff operations':'Administration';
- const description=!operator?'Your job matches and application activity, in one place.':role==='customer'?'Review opportunities, prepare your documents, apply, and track submissions from one workflow.':'Select a customer, review imported jobs, authorize the right opportunities, prepare documents, and track applications.';
+ const description=!operator?'Your job matches and application activity, in one place.':role==='customer'?'Review jobs, prepare documents and track applications.':'Review jobs, prepare documents and track applications.';
  let html=head(eyebrow,'Good '+(new Date().getHours()<12?'morning':new Date().getHours()<17?'afternoon':'evening')+', '+(state.account.full_name?.split(' ')[0]||'there'),description,role==='customer'?'':customerPicker());
  html+='<div class="grid">'+metrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>';if(id)html+=documentConsentPanel();
  if(id){
   html+='<section class="section"><div class="space section-head"><div><div class="eyebrow">AI SEARCH FUNNEL</div><h2>Search activity</h2></div><span class="badge neutral">'+aiRuns.length+' AI run'+(aiRuns.length===1?'':'s')+'</span></div>'+
-   (aiRuns.length?'<div class="grid">'+funnelMetrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>':'<div class="card empty"><strong>No AI search runs logged yet</strong>The next Run AI Job Search will record the search funnel automatically.</div>')+
+   (aiRuns.length?'<div class="grid">'+funnelMetrics.map(([n,v])=>'<div class="card stat"><div class="name">'+n+'</div><div class="value">'+v+'</div></div>').join('')+'</div>':'<div class="card empty"><strong>No AI searches yet</strong>Search activity appears after your first run.</div>')+
   '</section>';
  }
  if(!id&&role!=='customer')return html+'<div class="card section empty"><strong>No assigned customers yet</strong>Admin can assign customers in Accounts & access.</div>';
  const nextPage=!operator?'matches':role==='customer'?'queue-new':'import';
  const nextLabel=!operator?'Review matches':'Job Search';
  html+='<div class="section grid two"><div class="card"><h2>'+(!operator?'What happens next':'Daily workflow')+'</h2><ul class="checklist">'+(!operator?'<li>Review your verified job matches</li><li>Approve the jobs you want pursued</li><li>Access documents and submission updates</li>':role==='customer'?'<li>Review new job results</li><li>Approve or skip opportunities</li><li>Prepare/download tailored documents</li><li>Apply and record submission confirmation</li>':'<li>Choose a customer and run AI Job Search or import a CSV</li><li>Review and authorize the right jobs</li><li>Prepare job-specific documents</li><li>Apply on employer site and record confirmation</li>')+'</ul><button class="btn" data-action="navigate" data-page="'+nextPage+'">'+nextLabel+'</button></div><div class="card"><h2>Recent applications</h2>'+(a.length?a.slice(0,4).map(x=>{const job=byId(state.jobs,x.job_id);return '<div class="detail space"><div><div class="title">'+esc(job?.job_title||x.application_code)+'</div><div class="sub">'+esc(job?.company||'')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty"><strong>No applications yet</strong>Approved jobs will appear here.</div>')+'</div></div>';
- if(operator){html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View Customer Profile</h2><p class="muted">Review the selected customer\'s saved search strategy, preferences and AI search controls.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View Customer Profile</button></div></section>'}
+ if(operator){html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View profile</h2><p class="muted">Review the selected customer\'s saved search strategy, preferences and AI search controls.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View profile</button></div></section>'}
  if(role!=='customer'){html+='<section class="section card"><h2>Last search batches</h2>'+(state.runs.filter(x=>x.customer_id===id).slice(0,5).map(x=>'<p><span class="pill">'+esc(x.external_id)+'</span> · '+(x.run_type==='ai_search'?(Number(x.web_sources_retrieved_count||0)+' web sources · '+Number(x.ai_reviewed_count||0)+' fully evaluated · '+Number(x.qualified_count||0)+' qualified · '+Number(x.new_rows||0)+' new · '+Number(x.duplicate_rows||0)+' duplicates'):(Number(x.new_rows||0)+' new · '+Number(x.duplicate_rows||0)+' duplicates'))+' · '+fmtDate(x.created_at)+'</p>').join('')||'<p class="muted">No search runs yet.</p>')+'</section>'}
  return html;
 }
 function matchesPage(){
  let rows=filteredQualifiedJobs(), pending=rows.filter(x=>x.review_status==='pending');
- let html=head('Customer portal','Review opportunities','Only matches meeting your approved fit threshold appear here. Approve each posting before staff prepare and submit an application.');
+ let html=head('Customer portal','Review opportunities','Approve a job before staff prepare its application.');
  if(!rows.length)return html+'<section class="card empty"><strong>No qualified matches available</strong>Staff will add results after the next search batch.</section>';
  html+='<div class="space section-head"><h2>'+pending.length+' awaiting your decision</h2><span class="badge neutral">Fit ≥ '+esc(currentProfile()?.min_fit_score??80)+'</span></div>';
- html+='<div class="flex-col">'+rows.map(j=>'<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score)+'/100</span></div><p>'+esc(j.fit_reason)+'</p>'+(j.concerns?'<p class="hint">Considerations: '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span>'+statusBadge(j.review_status)+'</div><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Original posting ↗</a>'+(j.review_status==='pending'?'<button class="btn small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="approved">Approve</button><button class="btn ghost small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="rejected">Reject</button>':'<span class="hint">Decision recorded '+fmtDate(j.decided_at)+'</span>')+'</div></article>').join('')+'</div>';
+ html+='<div class="flex-col">'+rows.map(j=>'<article class="card"><div class="space"><div><h3>'+esc(j.job_title)+'</h3><p class="muted">'+esc(j.company)+' · '+esc(j.location)+' · '+esc(j.work_arrangement)+'</p></div><span class="score">'+esc(j.fit_score)+'/100</span></div><p>'+esc(j.fit_reason)+'</p>'+(j.concerns?'<p class="hint">Considerations: '+esc(j.concerns)+'</p>':'')+'<div class="space detail actions"><span class="hint">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</span>'+statusBadge(j.review_status)+'</div><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Open posting ↗</a>'+(j.review_status==='pending'?'<button class="btn small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="approved">Approve</button><button class="btn ghost small" data-action="decision" data-job="'+esc(j.id)+'" data-decision="rejected">Reject</button>':'<span class="hint">Decision recorded '+fmtDate(j.decided_at)+'</span>')+'</div></article>').join('')+'</div>';
  return html;
 }
 function applicationsPage(){
  const a=matchingApps(currentCustomer());
- let html=head('Customer portal','My applications','View actual status, job-specific documents, and the files used for submitted applications.');
+ let html=head('Customer portal','My applications','View application status and documents.');
  if(!a.length)return html+'<section class="card empty"><strong>Nothing submitted or preparing yet</strong>Approve a job match to start a new application.</section>';
- return html+'<section class="flex-col">'+a.map(app=>{let j=byId(state.jobs,app.job_id);return '<article class="card"><div class="space"><div><span class="pill">'+esc(app.application_code)+'</span><h3 style="margin:9px 0 3px">'+esc(j?.job_title||'Application')+'</h3><div class="muted">'+esc(j?.company||'')+' · '+esc(j?.location||'')+'</div></div>'+statusBadge(app.status)+'</div><hr><p class="hint">Approved '+fmtDate(app.created_at)+' · Submitted '+fmtDate(app.submitted_at)+'</p>'+(app.submission_reference?'<p><strong>Confirmation:</strong> '+esc(app.submission_reference)+'</p>':'')+'<div class="stack section">'+docButtons(app)+'<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j?.job_url))+'">Job posting ↗</a></div></article>'}).join('')+'</section>';
+ return html+'<section class="flex-col">'+a.map(app=>{let j=byId(state.jobs,app.job_id);return '<article class="card"><div class="space"><div><span class="pill">'+esc(app.application_code)+'</span><h3 style="margin:9px 0 3px">'+esc(j?.job_title||'Application')+'</h3><div class="muted">'+esc(j?.company||'')+' · '+esc(j?.location||'')+'</div></div>'+statusBadge(app.status)+'</div><hr><p class="hint">Approved '+fmtDate(app.created_at)+' · Submitted '+fmtDate(app.submitted_at)+'</p>'+(app.submission_reference?'<p><strong>Confirmation:</strong> '+esc(app.submission_reference)+'</p>':'')+'<div class="stack section">'+docButtons(app)+'<a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j?.job_url))+'">Open posting ↗</a></div></article>'}).join('')+'</section>';
 }
-function docButtons(app){return ['resume','cover_letter'].map(k=>{let d=appliedDocFor(app.id,k);return d?'<button class="btn outline small" data-action="download" data-doc="'+esc(d.id)+'">'+(k==='resume'?'Resume':'Cover letter')+' v'+d.version+' ↓</button>':'<span class="badge warn">'+(k==='resume'?'Resume':'Cover letter')+' pending</span>'}).join('')}
+function docButtons(app){return ['resume','cover_letter'].map(k=>{let d=appliedDocFor(app.id,k);return d?'<button class="btn outline small" data-action="download" data-doc="'+esc(d.id)+'">'+(k==='resume'?'Download resume':'Download cover letter')+' v'+d.version+'</button>':'<span class="badge warn">'+(k==='resume'?'Resume':'Cover letter')+' pending</span>'}).join('')}
 function customerProfileViewPage(){
  const p=currentProfile()||{},id=currentCustomer();
  const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
@@ -225,12 +245,12 @@ function customerProfileViewPage(){
  const referenceResumeRemaining=Math.max(0,5-referenceResumeCount);
  const promptNeedsUpdate=aiPromptNeedsUpdate(p);
  const promptButton=promptNeedsUpdate
-   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI Search Prompt':'Create AI Search Prompt')+'</button>'
-   :'<button class="btn outline small" type="button" disabled title="AI search prompt matches the current saved profile and reference resumes">AI Prompt Up to Date</button>';
+   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI search prompt':'Create AI search prompt')+'</button>'
+   :'<button class="btn outline small" type="button" disabled title="AI search prompt matches the current saved profile and reference resumes">AI prompt up to date</button>';
  const extra=state.account.role==='customer'
-   ?'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
-   :'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
- let html=head('User profile review',customerName(id)+' · Profile & Search Preferences','Review the saved customer profile used by MatchPath AI Job Search. Fields are read-only until an Admin selects Edit.',extra);
+   ?'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>'
+   :'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>';
+ let html=head('Profile Review',customerName(id)+' · Profile & Search Preferences','Review the saved search preferences. Use the pencil icon to edit a section.',extra);
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
  html+=documentConsentPanel();
  const ro=(label,value)=>'<div class="field readonly-field"><label>'+esc(label)+'</label><div class="readonly-control">'+profileText(value)+'</div></div>';
@@ -259,16 +279,16 @@ function customerProfileViewPage(){
  '<div class="form-row">'+ro('Minimum fit score',p.min_fit_score??80)+ro('Service preference',p.service_tier==='full_service'?'Full Service — human staff applies':'DIY — customer applies')+'</div>'+
  '<div class="profile-prompt-state"><strong>'+(p.ai_search_prompt?'AI search prompt exists':'AI search prompt not created yet')+'</strong><span class="hint">'+(promptNeedsUpdate?(p.ai_search_prompt?'Profile or reference resumes changed. Update the AI search prompt before the next search.':'Create the AI search prompt from this profile and its original/reference resumes.'):'AI search prompt is current for this profile.')+'</span></div>'+
  '</section>'+
- '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">⬆ Upload resume</button></div>':'')+'</div>'+
+ '<section class="card profile-panel profile-span"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded'+(referenceResumeRemaining?' · '+referenceResumeRemaining+' remaining':' · maximum reached')+'</span></div>'+(state.account.role==='admin'&&referenceResumeRemaining>0?'<div><input id="reviewReferenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple class="hidden"><button class="btn outline small" type="button" data-action="choose-reference-resumes" title="Upload original/reference resumes">Upload resume</button></div>':'')+'</div>'+
  '<p class="muted">These source resumes help MatchPath verify experience and improve the AI search prompt. They are not sent on every job search.</p>'+
- '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon" aria-hidden="true">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can upload up to 5 PDF or Word resumes directly here.</div>')+'</div>'+
+ '<div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon" aria-hidden="true">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'" >Open resume</button></div>').join(''):'<div class="empty compact"><strong>No original resumes uploaded yet</strong>Admin can upload up to 5 PDF or Word resumes directly here.</div>')+'</div>'+
  '</section>'+
  '</div></form>';
  return html;
 }
 function profileAnalysisPage(){
  const id=currentCustomer(),p=currentProfile()||{};
- let html=head('Profile Analysis',customerName(id)+' · Evidence, Strategy & Resume Library','Analyze original resumes, build Candidate Evidence and Search Strategy, then generate reusable general resumes by career category.',state.account.role==='customer'?'':customerPicker());
+ let html=head('Profile Analysis',customerName(id)+' · Evidence, Strategy & Resume Library','Analyze resumes, build a search strategy and create reusable resumes.',state.account.role==='customer'?'':customerPicker());
  if(!id)return html+'<div class="card empty">No customer selected.</div>';
  const resumes=state.referenceResumes.filter(r=>r.customer_id===id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
  const evidence=latestCandidateEvidence(id),evidenceCurrent=candidateEvidenceCurrent(evidence,id);
@@ -276,15 +296,15 @@ function profileAnalysisPage(){
  const live=currentSearchStrategy(id),liveCurrent=searchStrategyCurrent(live,id);
  const generalResumes=currentGeneralResumes(id),generalResumesCurrent=generalResumeLibraryCurrent(generalResumes,id);
  const e=evidence?.evidence_json||{},s=strategy?.strategy_json||{};
- const badges=(items,cls='neutral')=>(Array.isArray(items)&&items.length?items.slice(0,30).map(x=>'<span class="badge '+cls+'">'+esc(x)+'</span>').join(' '):'<span class="muted">None recorded</span>');
+ const badges=(items,cls='neutral')=>(Array.isArray(items)&&items.length?items.slice(0,8).map(x=>'<span class="badge '+cls+'">'+esc(x)+'</span>').join(' ')+(items.length>8?'<details class="extra-evidence"><summary>Show '+(items.length-8)+' more</summary><div class="stack wrap section">'+items.slice(8).map(x=>'<span class="badge '+cls+'">'+esc(x)+'</span>').join(' ')+'</div></details>':''):'<span class="muted">None recorded</span>');
  html+='<div class="analysis-flow section"><div class="analysis-step '+(resumes.length?'done':'')+'"><strong>1</strong><span>Resume Analysis</span></div><div class="analysis-arrow">→</div><div class="analysis-step '+(evidence&&evidenceCurrent?'done':'')+'"><strong>2</strong><span>Candidate Evidence</span></div><div class="analysis-arrow">→</div><div class="analysis-step '+(live&&liveCurrent?'done':'')+'"><strong>3</strong><span>AI Search Strategy</span></div><div class="analysis-arrow">→</div><div class="analysis-step '+(generalResumesCurrent?'done':'')+'"><strong>4</strong><span>General Resume Library</span></div></div>';
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 1</div><h2>Resume Analysis</h2><p class="muted">AI analyzes up to 5 original/reference resumes as evidence only. Customer preferences are not inferred from resumes.</p></div><button class="btn" type="button" data-action="run-resume-analysis" '+(resumes.length?'':'disabled title="Upload at least one resume first"')+'>'+(evidence?(evidenceCurrent?'Re-run Resume Analysis':'Resume Changed — Re-analyze'):'Run Resume Analysis')+'</button></div><div class="stack section"><span class="badge '+(resumes.length?'neutral':'warn')+'">'+resumes.length+' resume'+(resumes.length===1?'':'s')+' available</span>'+(evidence?'<span class="badge '+(evidenceCurrent?'':'warn')+'">Evidence v'+esc(evidence.version)+' · '+(evidenceCurrent?'Current':'Stale')+'</span>':'<span class="badge warn">No Candidate Evidence yet</span>')+'</div>'+(resumes.length?'<div class="reference-resume-list section">'+resumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join('')+'</div>':'<div class="warning section">Upload an original/reference resume from User Profile Review before analysis.</div>')+'</section>';
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 2</div><h2>Candidate Evidence</h2><p class="muted">Role-supported evidence and candidate-stated experience both inform matching. Strengthening recommendations identify where the resume should add more persuasive role-level detail.</p></div>'+(evidence?'<span class="badge '+(evidenceCurrent?'':'warn')+'">v'+esc(evidence.version)+' · '+(evidenceCurrent?'Current':'Stale')+'</span>':'')+'</div>'+(evidence?'<div class="analysis-summary"><h3>'+esc(e.headline||'Candidate evidence')+'</h3><p>'+esc(e.career_summary||'')+'</p>'+(e.years_experience_summary?'<p class="hint">'+esc(e.years_experience_summary)+'</p>':'')+'</div><div class="grid two section"><div><h3>Verified roles</h3><div class="stack wrap">'+badges(e.verified_roles)+'</div><h3>Verified skills</h3><div class="stack wrap">'+badges(e.verified_skills)+'</div><h3>Systems / tools</h3><div class="stack wrap">'+badges(e.verified_systems)+'</div></div><div><h3>Candidate-stated experience</h3><div class="stack wrap">'+badges(e.candidate_stated_experience||e.unsupported_or_unverified||[])+'</div><p class="hint">Explicit claims on the resume are treated as candidate experience even when the work-history bullets could support them more strongly.</p><h3>Resume strengthening recommendations</h3><div class="resume-strengthening-list">'+((e.resume_strengthening_recommendations||[]).length?(e.resume_strengthening_recommendations||[]).map(r=>'<div class="resume-strengthening-item"><strong>'+esc(r.claim||'Resume claim')+'</strong><span>'+esc(r.current_support||'')+'</span><em>Recommended: '+esc(r.recommended_addition||'Add a concrete role-level example.')+'</em></div>').join(''):(e.evidence_gaps||[]).length?(e.evidence_gaps||[]).map(x=>'<div class="resume-strengthening-item legacy"><strong>Resume strengthening opportunity</strong><span>'+esc(x)+'</span><em>Re-run Resume Analysis to generate a specific improvement recommendation.</em></div>').join(''):'<span class="muted">No strengthening recommendations recorded.</span>')+'</div><h3>Questions to clarify</h3><div class="stack wrap">'+badges(e.unresolved_evidence_questions||[],'warn')+'</div><h3>Education & certifications</h3><div class="stack wrap">'+badges([...(e.education||[]),...(e.certifications||[])])+'</div></div></div><details class="section"><summary>More evidence details</summary><div class="grid two section"><div><h3>Responsibilities</h3><ul class="checklist">'+(e.responsibilities||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div><div><h3>Achievements</h3><ul class="checklist">'+(e.achievements||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div></div></details>':'<div class="empty section"><strong>Candidate Evidence has not been created</strong>Run Resume Analysis to build a structured evidence record.</div>')+'</section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 1</div><h2>Resume Analysis</h2><p class="muted">Analyzes up to five resumes. Your stated career preferences remain unchanged.</p></div><button class="btn" type="button" data-action="run-resume-analysis" '+(resumes.length?'':'disabled title="Upload at least one resume first"')+'>'+(evidence?(evidenceCurrent?'Re-run resume analysis':'Resume changed — re-analyze'):'Run resume analysis')+'</button></div><div class="stack section"><span class="badge '+(resumes.length?'neutral':'warn')+'">'+resumes.length+' resume'+(resumes.length===1?'':'s')+' available</span>'+(evidence?'<span class="badge '+(evidenceCurrent?'':'warn')+'">Evidence v'+esc(evidence.version)+' · '+(evidenceCurrent?'Current':'Stale')+'</span>':'<span class="badge warn">No Candidate Evidence yet</span>')+'</div>'+(resumes.length?'<div class="reference-resume-list section">'+resumes.map(r=>'<div class="reference-resume-row"><div class="reference-resume-file"><span class="resume-file-icon">📄</span><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'" >Open resume</button></div>').join('')+'</div>':'<div class="warning section">Upload a resume from Profile Review to begin.</div>')+'</section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 2</div><h2>Candidate Evidence</h2><p class="muted">Supported and candidate-stated experience inform matching. Suggested edits strengthen resume evidence.</p></div>'+(evidence?'<span class="badge '+(evidenceCurrent?'':'warn')+'">v'+esc(evidence.version)+' · '+(evidenceCurrent?'Current':'Stale')+'</span>':'')+'</div>'+(evidence?'<div class="analysis-summary"><h3>'+esc(e.headline||'Candidate evidence')+'</h3><p>'+esc(e.career_summary||'')+'</p>'+(e.years_experience_summary?'<p class="hint">'+esc(e.years_experience_summary)+'</p>':'')+'</div><div class="grid two section"><div><h3>Verified roles</h3><div class="stack wrap">'+badges(e.verified_roles)+'</div><h3>Verified skills</h3><div class="stack wrap">'+badges(e.verified_skills)+'</div><h3>Systems / tools</h3><div class="stack wrap">'+badges(e.verified_systems)+'</div></div><div><h3>Candidate-stated experience</h3><div class="stack wrap">'+badges(e.candidate_stated_experience||e.unsupported_or_unverified||[])+'</div><p class="hint">Explicit claims on the resume are treated as candidate experience even when the work-history bullets could support them more strongly.</p><h3>Resume strengthening recommendations</h3><div class="resume-strengthening-list">'+((e.resume_strengthening_recommendations||[]).length?(e.resume_strengthening_recommendations||[]).map(r=>'<div class="resume-strengthening-item"><strong>'+esc(r.claim||'Resume claim')+'</strong><span>'+esc(r.current_support||'')+'</span><em>Recommended: '+esc(r.recommended_addition||'Add a concrete role-level example.')+'</em></div>').join(''):(e.evidence_gaps||[]).length?'<div class="empty compact"><strong>Recommendations need refreshing</strong>Re-run resume analysis to get specific suggestions. <details><summary>View '+e.evidence_gaps.length+' earlier note'+(e.evidence_gaps.length===1?'':'s')+'</summary><ul class="checklist">'+e.evidence_gaps.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></details></div>':'<span class="muted">No strengthening recommendations recorded.</span>')+'</div><h3>Questions to clarify</h3><div class="stack wrap">'+badges(e.unresolved_evidence_questions||[],'warn')+'</div><h3>Education & certifications</h3><div class="stack wrap">'+badges([...(e.education||[]),...(e.certifications||[])])+'</div></div></div><details class="section"><summary>More evidence details</summary><div class="grid two section"><div><h3>Responsibilities</h3><ul class="checklist">'+(e.responsibilities||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div><div><h3>Achievements</h3><ul class="checklist">'+(e.achievements||[]).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div></div></details>':'<div class="empty section"><strong>Candidate Evidence has not been created</strong>Run resume analysis to build a structured evidence record.</div>')+'</section>';
  const canBuild=!!evidence&&evidenceCurrent;
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 3</div><h2>AI Search Strategy</h2><p class="muted">Combines explicit profile preferences with Candidate Evidence. Candidate-stated experience can support matching; resume-strengthening recommendations improve how convincingly that experience is presented.</p></div><button class="btn" type="button" data-action="build-search-strategy" '+(canBuild?'':'disabled title="Current Candidate Evidence required"')+'>'+(strategy?(strategyCurrent?'Build New Strategy Version':'Build Updated Strategy'):'Build AI Search Strategy')+'</button></div>'+(strategy?'<div class="stack section"><span class="badge neutral">Strategy v'+esc(strategy.version)+'</span><span class="badge '+(strategyCurrent?'':'warn')+'">'+(strategyCurrent?'Inputs Current':'Inputs Changed')+'</span><span class="badge neutral">'+esc(strategy.status)+'</span></div><div class="analysis-summary"><h3>'+esc(s.strategy_summary||'AI Search Strategy')+'</h3></div><div class="grid two section"><div><h3>Primary roles</h3><div class="stack wrap">'+badges(s.primary_roles)+'</div><h3>Adjacent roles</h3><div class="stack wrap">'+badges(s.adjacent_roles)+'</div><h3>Priority sectors</h3><div class="stack wrap">'+badges(s.priority_sectors)+'</div></div><div><h3>Mandatory filters</h3><div class="stack wrap">'+badges(s.mandatory_filters)+'</div><h3>Verified strengths</h3><div class="stack wrap">'+badges(s.verified_strengths)+'</div><h3>Needs verification</h3><div class="stack wrap">'+badges(s.needs_verification,'warn')+'</div></div></div><div class="stack section"><button class="btn outline small" type="button" data-action="view-strategy-prompt" data-strategy="'+esc(strategy.id)+'">View Strategy Prompt</button>'+(strategy.status!=='current'&&strategyCurrent?'<button class="btn small" type="button" data-action="activate-search-strategy" data-strategy="'+esc(strategy.id)+'">Activate Strategy</button>':'')+(strategy.status==='current'&&strategyCurrent?'<span class="badge">Live AI Search Strategy</span>':'')+'</div>':'<div class="empty section"><strong>No AI Search Strategy yet</strong>Build one after Candidate Evidence is current.</div>')+'</section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 3</div><h2>AI Search Strategy</h2><p class="muted">Combines your preferences and Candidate Evidence into a job-search strategy.</p></div><button class="btn" type="button" data-action="build-search-strategy" '+(canBuild?'':'disabled title="Current Candidate Evidence required"')+'>'+(strategy?(strategyCurrent?'Build new strategy version':'Update search strategy'):'Build AI search strategy')+'</button></div>'+(strategy?'<div class="stack section"><span class="badge neutral">Strategy v'+esc(strategy.version)+'</span><span class="badge '+(strategyCurrent?'':'warn')+'">'+(strategyCurrent?'Inputs Current':'Inputs Changed')+'</span><span class="badge neutral">'+esc(strategy.status)+'</span></div><div class="analysis-summary"><h3>'+esc(s.strategy_summary||'AI Search Strategy')+'</h3></div><div class="grid two section"><div><h3>Primary roles</h3><div class="stack wrap">'+badges(s.primary_roles)+'</div><h3>Adjacent roles</h3><div class="stack wrap">'+badges(s.adjacent_roles)+'</div><h3>Priority sectors</h3><div class="stack wrap">'+badges(s.priority_sectors)+'</div></div><div><h3>Mandatory filters</h3><div class="stack wrap">'+badges(s.mandatory_filters)+'</div><h3>Verified strengths</h3><div class="stack wrap">'+badges(s.verified_strengths)+'</div><h3>Needs verification</h3><div class="stack wrap">'+badges(s.needs_verification,'warn')+'</div></div></div><div class="stack section"><button class="btn outline small" type="button" data-action="view-strategy-prompt" data-strategy="'+esc(strategy.id)+'">View strategy prompt</button>'+(strategy.status!=='current'&&strategyCurrent?'<button class="btn small" type="button" data-action="activate-search-strategy" data-strategy="'+esc(strategy.id)+'">Activate strategy</button>':'')+(strategy.status==='current'&&strategyCurrent?'<span class="badge">Live AI Search Strategy</span>':'')+'</div>':'<div class="empty section"><strong>No AI Search Strategy yet</strong>Build one after Candidate Evidence is current.</div>')+'</section>';
  const canGenerateGeneralResumes=!!live&&liveCurrent&&!!evidence&&evidenceCurrent;
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 4</div><h2>General Resume Library</h2><p class="muted">Creates reusable ATS-friendly baseline resumes for the major career categories in the active strategy. These are starting points for later job-specific tailoring.</p></div><button class="btn" type="button" data-action="generate-general-resumes" '+(canGenerateGeneralResumes?'':'disabled title="Activate a current AI Search Strategy first"')+'>'+(generalResumes.length?(generalResumesCurrent?'Regenerate Resume Library':'Rebuild Resume Library'):'Generate General Resumes')+'</button></div>'+
- (generalResumes.length?'<div class="stack section"><span class="badge '+(generalResumesCurrent?'':'warn')+'">'+generalResumes.length+' categor'+(generalResumes.length===1?'y':'ies')+' · '+(generalResumesCurrent?'Current':'Inputs changed')+'</span>'+(live?'<span class="badge neutral">Strategy v'+esc(live.version)+'</span>':'')+(evidence?'<span class="badge neutral">Evidence v'+esc(evidence.version)+'</span>':'')+'</div><div class="general-resume-grid section">'+generalResumes.map(r=>'<article class="general-resume-card"><div class="space"><div><div class="eyebrow">GENERAL RESUME</div><h3>'+esc(r.category_name)+'</h3></div><span class="badge neutral">v'+esc(r.version)+'</span></div><p>'+esc(r.focus_summary||'Reusable baseline resume for this career lane.')+'</p><div class="stack wrap">'+badges(r.target_roles)+'</div><div class="stack section"><button class="btn outline small" type="button" data-action="view-general-resume" data-resume="'+esc(r.id)+'">View Resume</button><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(r.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(r.id)+'">Download PDF</button><button class="btn ghost small" type="button" data-action="copy-general-resume" data-resume="'+esc(r.id)+'">Copy Text</button></div></article>').join('')+'</div>':'<div class="empty section"><strong>No general resumes yet</strong>Activate the current AI Search Strategy, then generate the category resume library.</div>')+
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">STEP 4</div><h2>General Resume Library</h2><p class="muted">Creates ATS-friendly baseline resumes by career focus. Tailor them for each job.</p></div><button class="btn" type="button" data-action="generate-general-resumes" '+(canGenerateGeneralResumes?'':'disabled title="Activate a current AI Search Strategy first"')+'>'+(generalResumes.length?(generalResumesCurrent?'Regenerate resume library':'Rebuild resume library'):'Generate general resumes')+'</button></div>'+
+ (generalResumes.length?'<div class="stack section"><span class="badge '+(generalResumesCurrent?'':'warn')+'">'+generalResumes.length+' categor'+(generalResumes.length===1?'y':'ies')+' · '+(generalResumesCurrent?'Current':'Inputs changed')+'</span>'+(live?'<span class="badge neutral">Strategy v'+esc(live.version)+'</span>':'')+(evidence?'<span class="badge neutral">Evidence v'+esc(evidence.version)+'</span>':'')+'</div><div class="general-resume-grid section">'+generalResumes.map(r=>'<article class="general-resume-card"><div class="space"><div><div class="eyebrow">GENERAL RESUME</div><h3>'+esc(r.category_name)+'</h3></div><span class="badge neutral">v'+esc(r.version)+'</span></div><p>'+esc(r.focus_summary||'Reusable baseline resume for this career lane.')+'</p><div class="stack wrap">'+badges(r.target_roles)+'</div><div class="stack section"><button class="btn outline small" type="button" data-action="view-general-resume" data-resume="'+esc(r.id)+'">View resume</button><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(r.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(r.id)+'">Download PDF</button><button class="btn ghost small" type="button" data-action="copy-general-resume" data-resume="'+esc(r.id)+'">Copy text</button></div></article>').join('')+'</div>':'<div class="empty section"><strong>No baseline resumes yet</strong>Activate the current AI Search Strategy, then generate the category resume library.</div>')+
  '</section>';
  const history=state.searchStrategies.filter(x=>x.customer_id===id).sort((a,b)=>Number(b.version)-Number(a.version));
  if(history.length)html+='<section class="card section"><h2>Strategy history</h2><div class="table-wrap"><table><thead><tr><th>Version</th><th>Status</th><th>Created</th><th>Model</th></tr></thead><tbody>'+history.slice(0,10).map(x=>'<tr><td>v'+esc(x.version)+'</td><td>'+statusBadge(x.status)+'</td><td>'+fmtDate(x.created_at)+'</td><td>'+esc(x.model||'—')+'</td></tr>').join('')+'</tbody></table></div></section>';
@@ -296,7 +316,7 @@ function profilePage(){
  const active=state.profileEditSection||null;
  const isEditing=section=>active===section;
  const editIcon=(section,label)=>'<button class="icon-btn profile-edit-icon '+(isEditing(section)?'active':'')+'" type="button" data-action="edit-profile-section" data-section="'+esc(section)+'" aria-label="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'" title="'+(isEditing(section)?'Editing ':'Edit ')+esc(label)+'">✎</button>';
- const saveButton=(section,label)=>isEditing(section)?'<div class="profile-section-actions"><button class="btn small" type="submit" data-section="'+esc(section)+'">'+esc(label)+'</button></div>':'';
+ const saveButton=(section)=>isEditing(section)?'<div class="profile-section-actions"><button class="btn small" type="submit" data-section="'+esc(section)+'">'+COPY.save+'</button></div>':'';
  const pArea=(section,id,label,value='',hint='')=>isEditing(section)?area(id,label,value,hint):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><textarea id="'+esc(id)+'" disabled>'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
  const pField=(section,id,label,value='',type='text',extra='')=>isEditing(section)?field(id,label,value,type,extra):'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><span class="hint">Read only</span></div><input id="'+esc(id)+'" type="'+esc(type)+'" value="'+esc(value)+'" disabled></div>';
  const objectiveOptions=['Continue in my field','Change career path','Move private → public sector','Move public → private sector','Move up to management / director','Increase compensation','Improve stability / pension','Improve work-life balance'];
@@ -312,19 +332,19 @@ function profilePage(){
  const referenceResumeRemaining=Math.max(0,5-referenceResumeCount);
  const promptNeedsUpdate=aiPromptNeedsUpdate(p);
  const promptButton=promptNeedsUpdate
-   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI Search Prompt':'Create AI Search Prompt')+'</button>'
-   :'<button class="btn outline small" type="button" disabled title="AI prompt matches the current saved profile">AI Prompt Up to Date</button>';
+   ?'<button class="btn outline small" type="button" data-action="update-ai-prompt">'+(p.ai_search_prompt?'Update AI search prompt':'Create AI search prompt')+'</button>'
+   :'<button class="btn outline small" type="button" disabled title="AI prompt matches the current saved profile">AI prompt up to date</button>';
  const headingExtra=operator
-   ?'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>'
-   :'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View Full AI Search Prompt</button></div>';
- let html=head(operator?'Customer setup':'Customer setup',customerName(id)+' · Profile & Search Preferences','Profile sections are read-only by default. Select the pencil icon to edit one section at a time.',headingExtra);
+   ?'<div class="stack profile-heading-tools">'+customerPicker()+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>'
+   :'<div class="stack">'+promptButton+'<button class="btn ghost small" type="button" data-action="view-ai-prompt">View AI search prompt</button></div>';
+ let html=head('Edit Profile',customerName(id)+' · Profile & Search Preferences','Select the pencil icon to edit a section.',headingExtra);
  html+='<form id="profileForm" class="profile-compact"><div class="profile-grid">'+
  '<section id="profile-section-search-focus" class="card profile-panel '+(isEditing('search-focus')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Search focus</h2>'+editIcon('search-focus','Search focus')+'</div>'+
  pArea('search-focus','target_roles','Target roles and seniority',p.target_roles)+
  pArea('search-focus','transferable_roles','Adjacent / transferable roles',p.transferable_roles)+
  pArea('search-focus','industries','Industries and sectors',p.industries)+
  '<div class="field"><div class="field-label-row"><label>Employment type</label><span class="hint">'+(isEditing('search-focus')?'Select all that apply':'Read only')+'</span></div><div class="multi-check-grid '+(isEditing('search-focus')?'':'readonly-checks')+'">'+employmentChoices.map(x=>'<label class="check-option"><input type="checkbox" name="employment_type" value="'+esc(x)+'" '+(selectedEmployment.includes(x)?'checked':'')+' '+(isEditing('search-focus')?'':'disabled')+'> '+esc(x)+'</label>').join('')+'</div></div>'+
- saveButton('search-focus','Save Search Focus')+
+ saveButton('search-focus')+
  '</section>'+
  '<section id="profile-section-location-comp" class="card profile-panel '+(isEditing('location-comp')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Location, work & compensation</h2>'+editIcon('location-comp','Location, work and compensation')+'</div>'+
  pArea('location-comp','preferred_locations','Preferred locations',p.preferred_locations)+
@@ -334,12 +354,12 @@ function profilePage(){
  '<div class="form-row"><div class="field"><div class="field-label-row"><label for="salary_currency">Currency</label><span class="hint">'+(isEditing('location-comp')?'':'Read only')+'</span></div><select id="salary_currency" '+(isEditing('location-comp')?'':'disabled')+'>'+['CAD','USD'].map(x=>'<option '+(p.salary_currency===x?'selected':'')+'>'+x+'</option>').join('')+'</select></div>'+
  pField('location-comp','salary_target','Target compensation',p.salary_target||'','number','min="0"')+'</div>'+
  pArea('location-comp','pension_preferences','Benefits / pension preferences',p.pension_preferences)+
- saveButton('location-comp','Save Location & Compensation')+
+ saveButton('location-comp')+
  '</section>'+
  '<section id="profile-section-career-priorities" class="card profile-panel '+(isEditing('career-priorities')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>Career priorities</h2>'+editIcon('career-priorities','Career priorities')+'</div>'+
  '<div class="profile-objectives '+(isEditing('career-priorities')?'':'readonly-objectives')+'">'+objectiveOptions.map(o=>'<label><input type="checkbox" name="career_objective" value="'+esc(o)+'" '+(objectives.includes(o)?'checked':'')+' '+(isEditing('career-priorities')?'':'disabled')+'> '+esc(o)+'</label>').join('')+'</div>'+
  pArea('career-priorities','career_goals_detail','Career destination, priorities and timeline',goalsFree)+
- saveButton('career-priorities','Save Career Priorities')+
+ saveButton('career-priorities')+
  '</section>'+
  '<section id="profile-section-ai-search-controls" class="card profile-panel '+(isEditing('ai-search-controls')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><h2>AI search controls</h2>'+editIcon('ai-search-controls','AI search controls')+'</div>'+
  pField('ai-search-controls','linkedin_url','LinkedIn public profile URL',p.linkedin_url||linkedinMatch?.[1]||'','url','placeholder="https://www.linkedin.com/in/your-profile"')+
@@ -347,24 +367,24 @@ function profilePage(){
  pArea('ai-search-controls','search_instructions','Additional AI search instructions',cleanInstructions,'Nice-to-have preferences belong here; keep hard exclusions above.')+
  '<div class="form-row">'+pField('ai-search-controls','min_fit_score','Minimum fit score',p.min_fit_score??80,'number','min="0" max="100" required')+
  '<div class="field"><div class="field-label-row"><label for="service_tier">Service preference</label><span class="hint">'+(state.account.role==='admin'&&isEditing('ai-search-controls')?'Admin only':'Read only')+'</span></div><select id="service_tier" '+(state.account.role==='admin'&&isEditing('ai-search-controls')?'':'disabled')+'><option value="diy" '+(p.service_tier!=='full_service'?'selected':'')+'>DIY — customer applies</option><option value="full_service" '+(p.service_tier==='full_service'?'selected':'')+'>Full Service — human staff applies</option></select></div></div>'+
- saveButton('ai-search-controls','Save AI Search Controls')+
+ saveButton('ai-search-controls')+
  '</section>'+
- '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF or Word resumes</label><input id="referenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF or Word resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI Search Prompt runs, these resume files may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes','Save Reference Resumes'):'')+'</section>'+
+ '<section id="profile-section-reference-resumes" class="card profile-panel profile-span '+(isEditing('reference-resumes')?'is-editing':'is-readonly')+'"><div class="profile-view-head"><div><h2>Original / Reference Resumes</h2><span class="hint">'+referenceResumeCount+' of 5 uploaded</span></div>'+((state.account.role==='admin'||state.account.role==='customer')?editIcon('reference-resumes','Original / Reference Resumes'):'')+'</div><div class="field"><label for="referenceFiles">Upload PDF or Word resumes</label><input id="referenceFiles" type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple '+((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0?'':'disabled')+'><span class="hint">'+(state.account.role==='staff'?'Staff can view these source resumes but only Admin or the customer can upload them.':referenceResumeRemaining>0?'Upload up to '+referenceResumeRemaining+' more PDF or Word resume'+(referenceResumeRemaining===1?'':'s')+'. Each file may be up to 6 MB. These resumes are used as evidence when AI builds the search prompt.':'Maximum of 5 original/reference resumes reached for this customer.')+'</span>'+((state.account.role==='admin'||state.account.role==='customer')?'<div class="input-help">When Create/Update AI search prompt runs, these resume files may be securely sent to OpenAI for resume-based experience analysis. They are not sent on every job search.</div>':'')+'</div><div class="reference-resume-list">'+(referenceResumes.length?referenceResumes.map(r=>'<div class="reference-resume-row"><div><strong>'+esc(r.original_filename)+'</strong><span class="hint">'+fmtDate(r.created_at)+'</span></div><button class="btn ghost small" type="button" data-action="reference-download" data-path="'+esc(r.storage_path)+'">Open resume</button></div>').join(''):'<div class="hint">No original/reference resumes uploaded for this customer yet.</div>')+'</div>'+(((state.account.role==='admin'||state.account.role==='customer')&&isEditing('reference-resumes')&&referenceResumeRemaining>0)?saveButton('reference-resumes'):'')+'</section>'+
  '</div></form>';
  return html;
 }
 function importPage(){
  const id=currentCustomer(),p=currentProfile()||{};
- const extra=state.account.role==='customer'?'<button class="btn outline small" data-action="navigate" data-page="customer-profile">View Customer Profile</button>':'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="navigate" data-page="customer-profile">View Customer Profile</button></div>';
- let html=head(operatorEyebrow(),'Job Search','Search current openings with OpenAI using the saved customer search profile, or import a MatchPath CSV manually.',extra);
+ const extra=state.account.role==='customer'?'<button class="btn outline small" data-action="navigate" data-page="customer-profile">View profile</button>':'<div class="stack">'+customerPicker()+'<button class="btn outline small" data-action="navigate" data-page="customer-profile">View profile</button></div>';
+ let html=head(operatorEyebrow(),'Job Search','Search with saved criteria or import job results.',extra);
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  const hasInstructions=[p.target_roles,p.search_instructions,p.career_goals,p.preferred_locations,p.industries].some(v=>String(v||'').trim());
- html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Uses the saved target roles, locations, exclusions, preferences and fit threshold. MatchPath searches the public web for current postings, deduplicates the results and sends new matches to To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><div class="stack"><button class="btn outline small" data-action="view-ai-prompt" '+(hasInstructions?'':'disabled')+'>View AI Prompt</button><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI Job Search</button></div></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??80)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
- html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View Customer Profile</h2><p class="muted">Review the saved profile and search preferences before running or importing a search.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View Customer Profile</button></div></section>';
- html+='<section class="card section"><h2>Manual CSV Import</h2><p class="muted">Keep the existing manual path for ChatGPT/analyst search batches or recovery workflows.</p><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are assigned by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
+ html+='<section class="card section"><div class="space"><div><div class="eyebrow">AI SEARCH</div><h2 style="margin:6px 0 8px">Search current openings</h2><p class="muted">Finds current jobs using your saved criteria. New matches appear in To be reviewed.</p><p class="hint">This action sends search criteria only; it does not send the customer\'s name, email or uploaded resume files.</p></div><div class="stack"><button class="btn outline small" data-action="view-ai-prompt" '+(hasInstructions?'':'disabled')+'>View AI search prompt</button><button class="btn" data-action="run-ai-search" '+(hasInstructions?'':'disabled title="Complete search instructions first"')+'>Run AI job search</button></div></div>'+(hasInstructions?'<div class="stack section"><span class="badge neutral">Fit ≥ '+esc(p.min_fit_score??80)+'</span>'+(p.preferred_locations?'<span class="badge neutral">'+esc(p.preferred_locations)+'</span>':'')+(p.employment_types?'<span class="badge neutral">'+esc(p.employment_types)+'</span>':'')+'</div>':'<div class="warning section">Search instructions are empty for this customer. Complete the Search Profile before running AI Job Search.</div>')+'</section>';
+ html+='<section class="card section profile-entry"><div class="space"><div><div class="eyebrow">CUSTOMER PROFILE</div><h2>View profile</h2><p class="muted">Review the search criteria before running a search.</p></div><button class="btn outline" data-action="navigate" data-page="customer-profile">View profile</button></div></section>';
+ html+='<section class="card section"><h2>Manual CSV Import</h2><p class="muted">Import a validated search CSV.</p><div class="file-box"><strong>Standard MatchPath search export (v1.0)</strong><p class="hint">UTF-8 CSV · exact 15 columns · customer and run IDs are assigned by MatchPath · up to 250 jobs per batch</p><input id="searchCsv" type="file" accept=".csv,text/csv"></div><p class="hint" style="margin-top:12px"><a href="../job_search_template.csv" target="_blank">Download standard CSV example ↗</a></p></section>';
  if(state.csvPreview){
   const v=state.csvPreview;
-  html+='<section class="card section"><h2>Validate and import</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import validated batch</button></section>';
+  html+='<section class="card section"><h2>Validate and import</h2><div class="stack"><span class="badge">'+v.rows.length+' evaluated</span><span class="badge neutral">'+v.rows.filter(x=>x.qualification_status==='Qualified').length+' qualified</span><span class="pill">Run ID assigned by backend</span></div><div class="table-wrap section"><table><thead><tr><th>Employer / role</th><th>Fit score</th><th>Classification</th></tr></thead><tbody>'+v.rows.slice(0,12).map(x=>'<tr><td><strong>'+esc(x.job_title)+'</strong><small>'+esc(x.company)+'</small></td><td>'+esc(x.fit_score||'—')+'</td><td>'+esc(x.qualification_status)+'</td></tr>').join('')+'</tbody></table></div><button class="btn section" data-action="commit-csv">Import jobs</button></section>';
  }
  return html;
 }
@@ -379,39 +399,30 @@ function resultFilterControls(forcedStatus,shown,total){
 }
 function jobResultsPanel(forcedStatus='all'){
  const id=currentCustomer(),allRows=matchingJobs(id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
- if(!id)return '<div class="card section empty">No customer assigned.</div>';
- if(!allRows.length)return '<section class="card section empty"><strong>No imported jobs yet</strong>Import a validated search CSV first.</section>';
-
- const statusLabel=s=>s==='new'?'New':s==='skipped'?'Skipped':s==='approved'?'Approved':s==='applied'?'Submitted':'Rejected';
- const search=state.resultSearch.trim().toLowerCase();
- const activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
+ if(!id)return '<div class="card section empty"><strong>No customer selected</strong>Select a customer to view jobs.</div>';
+ if(!allRows.length)return '<section class="card section empty"><strong>No jobs yet</strong>Run an AI search to find openings.<div class="section"><button class="btn outline small" data-action="navigate" data-page="import">Go to Job Search</button></div></section>';
+ const search=state.resultSearch.trim().toLowerCase(),activeStatus=forcedStatus==='all'?state.resultStatusFilter:forcedStatus;
  const baseRows=allRows.filter(j=>activeStatus==='all'||jobResultUiStatus(j)===activeStatus);
- const rows=baseRows.filter(j=>{
-   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-   return true;
- });
-
- const counts={
-   new:allRows.filter(j=>jobResultUiStatus(j)==='new').length,
-   approved:allRows.filter(j=>jobResultUiStatus(j)==='approved').length,
-   applied:allRows.filter(j=>jobResultUiStatus(j)==='applied').length,
-   skipped:allRows.filter(j=>jobResultUiStatus(j)==='skipped').length,
-   rejected:allRows.filter(j=>jobResultUiStatus(j)==='rejected').length
- };
-
- let html='<section class="section">';
- html+='<div class="stack section-head"><span class="badge neutral">'+counts.new+' To review</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
+ const rows=baseRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
+ const counts={new:0,approved:0,applied:0,skipped:0,rejected:0};
+ allRows.forEach(j=>{const key=jobResultUiStatus(j);if(key in counts)counts[key]++});
+ let html='<section class="section"><div class="stack section-head"><span class="badge neutral">'+counts.new+' To be reviewed</span><span class="badge neutral">'+counts.approved+' Approved</span><span class="badge">'+counts.applied+' Submitted</span><span class="badge neutral">'+counts.skipped+' Skipped</span><span class="badge neutral">'+counts.rejected+' Rejected</span></div>';
  html+=resultFilterControls(forcedStatus,rows.length,baseRows.length);
- html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Employer / role</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
-   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
-   const current=jobResultUiStatus(j);
-   const lockedApplied=current==='applied';
-   const statusControl=canOperateUi()
-     ?'<select id="job-status-'+esc(j.id)+'" class="form-control" style="min-width:132px" '+(lockedApplied?'disabled title="Submitted records are immutable"':'')+'>'+[['new','To be reviewed'],['approved','Approved'],['applied','Submitted'],['skipped','Skipped'],['rejected','Rejected']].map(([v,n])=>'<option value="'+v+'" '+(current===v?'selected':'')+'>'+n+'</option>').join('')+'</select>'
-     :'<span class="badge neutral">'+esc(statusLabel(current))+'</span>';
-   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td>'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a>'+(canOperateUi()&&!lockedApplied?'<button class="btn small" data-action="save-job-status" data-job="'+esc(j.id)+'">Save</button>':'')+(app&&app.status!=='closed'?'<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Documents</button>':'')+'</div></td></tr>';
+ if(canOperateUi()&&forcedStatus!=='applied'){
+  const dirty=Object.keys(state.resultStatusDrafts).length;
+  html+='<div class="space section section-head"><div class="hint" id="resultChangeCount">'+(dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges)+'</div><button class="btn" id="saveResultChanges" data-action="save-result-statuses" '+(dirty?'':'disabled')+'>'+COPY.save+'</button></div>';
+ }
+ if(!rows.length){
+  const descriptions={applied:'No submissions recorded yet. Record confirmed employer submissions from Approved.',skipped:'No skipped jobs yet. Skipped opportunities will appear here.',all:'No jobs match these filters. Try clearing your filters.',new:'No jobs waiting for review.',approved:'No approved jobs yet.'};
+  return html+'<section class="card section empty"><strong>Nothing to show</strong>'+descriptions[forcedStatus]+'<div class="section"><button class="btn outline small" data-action="navigate" data-page="'+(forcedStatus==='applied'?'queue-approved':forcedStatus==='all'?'import':'queue-new')+'">'+(forcedStatus==='applied'?'Go to Approved':forcedStatus==='all'?'Job Search':'Go to To be reviewed')+'</button></div></section></section>';
+ }
+ html+='<section class="card section"><div class="table-wrap"><table><thead><tr><th>Job</th><th>Fit</th><th>Qualification</th><th>Location</th><th>Salary</th><th>Status</th><th>Application</th><th>Actions</th></tr></thead><tbody>'+rows.map(j=>{
+  const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===j.id);
+  const current=jobResultUiStatus(j),locked=current==='applied';
+  const chosen=state.resultStatusDrafts[j.id]||current;
+  const statusControl=canOperateUi()&&!locked?jobStatusSelect(j,chosen,'data-result-status'):('<span class="badge neutral">'+(current==='applied'?'Submitted':esc(JOB_STATUSES.find(([v])=>v===current)?.[1]||current))+'</span>');
+  const qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+esc(j.location)+'<small>'+esc(j.work_arrangement||'Unknown')+'</small></td><td class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'')+'</td><td>'+statusControl+'</td><td>'+(app&&app.status!=='closed'?'<span class="pill">'+esc(app.application_code)+'</span><small>'+esc(app.status)+'</small>':'<span class="muted">—</span>')+'</td><td><div class="stack"><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a>'+(app&&app.status!=='closed'?'<button class="btn ghost small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">'+COPY.viewDocuments+'</button>':'')+'</div></td></tr>';
  }).join('')+'</tbody></table></div></section></section>';
  return html;
 }
@@ -423,21 +434,18 @@ function updateReviewSaveState(){
 }
 function newReviewTriagePage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='new').sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
- let html=head(operatorEyebrow(),'To be reviewed','Review new search results. Each job starts as To Be Reviewed. Change only the rows you want to Approve or Skip, then save all decisions together.',customerPicker());
- if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ let html=head(operatorEyebrow(),'To be reviewed','Choose Approve or Skip for each job, then save your changes.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer selected.</div>';
  const search=state.resultSearch.trim().toLowerCase();
- const rows=allRows.filter(j=>{
-   if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-   if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-   return true;
- });
+ const rows=allRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
  html+=resultFilterControls('new',rows.length,allRows.length);
- html+='<div class="space section section-head"><div><strong>Review decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):'No unsaved changes')+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>Save Changes</button></div>';
- html+='<section class="card"><div class="table-wrap"><table><thead><tr><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>To Be Reviewed</th><th>Approved</th><th>Skipped</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
-   const draft=state.reviewDrafts[j.id]||'new';
-   const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-   const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
-   return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(salary)+'</small>'+(j.concerns?'<small class="muted">Concern: '+esc(j.concerns)+'</small>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="new" '+(draft==='new'?'checked':'')+' aria-label="Keep To Be Reviewed"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="approved" '+(draft==='approved'?'checked':'')+' aria-label="Approve"></td><td style="text-align:center"><input type="radio" name="review-'+esc(j.id)+'" data-review-choice data-job="'+esc(j.id)+'" value="skipped" '+(draft==='skipped'?'checked':'')+' aria-label="Skip"></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Posting ↗</a></td></tr>';
+ html+='<p class="hint">Fit = match strength. Qualification = whether key requirements are confirmed.</p>';
+ html+='<div class="space section section-head"><div><strong>Job decisions</strong><div class="hint" id="reviewChangeCount">'+(reviewDraftCount()?reviewDraftCount()+' unsaved change'+(reviewDraftCount()===1?'':'s'):COPY.emptyChanges)+'</div></div><button class="btn" id="saveReviewDecisions" data-action="save-review-decisions" '+(reviewDraftCount()?'':'disabled')+'>'+COPY.save+'</button></div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No jobs to review</strong>Run a job search or clear the current filters.<div class="section"><button class="btn outline small" data-action="navigate" data-page="import">Go to Job Search</button></div></section>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th>Job</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
+  const draft=state.reviewDrafts[j.id]||'new',qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  const salary=money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):'');
+  return '<tr><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · <span class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+esc(salary)+'</span></small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+jobStatusSelect(j,draft,'data-review-choice',['new','approved','skipped'])+'</td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a></td></tr>';
  }).join('')+'</tbody></table></div></section>';
  return html;
 }
@@ -446,65 +454,61 @@ function updateApprovedBulkState(){
  const count=approvedSelectionIds().length;
  const label=$('#approvedSelectedCount');
  if(label)label.textContent=count+' selected';
- ['approvedResumeBatch','approvedSaveStatus','approvedMarkSubmitted'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+ ['approvedResumeBatch','approvedMarkSubmitted'].forEach(id=>{const b=$('#'+id);if(b)b.disabled=count===0});
+ const dirty=Object.keys(state.approvedStatusDrafts).length,save=$('#approvedSaveStatus'),changes=$('#approvedChangeCount');
+ if(save)save.disabled=dirty===0;if(changes)changes.textContent=dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges;
 }
 function approvedResultsPage(){
  const id=currentCustomer(),allRows=matchingJobs(id).filter(j=>jobResultUiStatus(j)==='approved').sort((a,b)=>(b.fit_score??-1)-(a.fit_score??-1));
- let html=head(operatorEyebrow(),'Approved','Jobs authorized for application preparation but not yet submitted. Select multiple jobs to work as a batch.',customerPicker());
- if(!id)return html+'<div class="card empty">No customer assigned.</div>';
+ let html=head(operatorEyebrow(),'Approved','Prepare documents and record employer submissions for approved jobs.',customerPicker());
+ if(!id)return html+'<div class="card empty">No customer selected.</div>';
  html+=documentConsentPanel();
  const search=state.resultSearch.trim().toLowerCase();
- const rows=allRows.filter(j=>{
-  if(state.resultQualificationFilter!=='all'&&j.qualification_status!==state.resultQualificationFilter)return false;
-  if(search&&!([j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)))return false;
-  return true;
- });
+ const rows=allRows.filter(j=>(state.resultQualificationFilter==='all'||j.qualification_status===state.resultQualificationFilter)&&(!search||[j.job_title,j.company,j.location,j.requisition_id,j.fit_reason,j.concerns].join(' ').toLowerCase().includes(search)));
  html+=resultFilterControls('approved',rows.length,allRows.length);
- const selectedCount=approvedSelectionIds().length;
- html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Download AI Resumes/Cover Letter</button><button class="btn outline small" id="approvedSaveStatus" data-action="approved-save-status" '+(selectedCount?'':'disabled')+'>Save Status</button><button class="btn outline small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>Mark Submitted</button></div></div>';
- if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs match the current filters.</strong></section>';
- html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job listing / basic info</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Action</th></tr></thead><tbody>'+rows.map(j=>{
+ const selectedCount=approvedSelectionIds().length,dirty=Object.keys(state.approvedStatusDrafts).length;
+ html+='<div class="space section section-head" style="position:sticky;top:0;z-index:5;background:var(--bg,#fff);padding:12px 0"><div class="stack"><label><input type="checkbox" id="approvedSelectAll"> Select all visible</label><span class="hint" id="approvedSelectedCount">'+selectedCount+' selected</span><span class="hint" id="approvedChangeCount">'+(dirty?dirty+' unsaved change'+(dirty===1?'':'s'):COPY.emptyChanges)+'</span></div><div class="stack"><button class="btn outline small" id="approvedResumeBatch" data-action="approved-resume-batch" '+(selectedCount?'':'disabled')+'>Download documents</button><button class="btn" id="approvedSaveStatus" data-action="approved-save-status" '+(dirty?'':'disabled')+'>'+COPY.save+'</button><button class="btn outline small" id="approvedMarkSubmitted" data-action="approved-mark-submitted" '+(selectedCount?'':'disabled')+'>'+COPY.recordSubmission+'</button></div></div>';
+ if(!rows.length)return html+'<section class="card empty"><strong>No approved jobs</strong>Approve a job from To be reviewed to prepare its documents.<div class="section"><button class="btn outline small" data-action="navigate" data-page="queue-new">Go to To be reviewed</button></div></section>';
+ html+='<section class="card"><div class="table-wrap"><table><thead><tr><th style="width:42px"></th><th>Job</th><th>Fit</th><th>Qualification</th><th>Status</th><th>Documents</th><th>Posting</th></tr></thead><tbody>'+rows.map(j=>{
   const app=state.apps.find(a=>a.job_id===j.id&&a.status!=='closed');
   const res=app?docFor(app.id,'resume'):null,letter=app?docFor(app.id,'cover_letter'):null;
-  const draft=state.approvedStatusDrafts[j.id]||'approved';
-  const qualificationClass=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
-  return '<tr><td><input type="checkbox" data-approved-select data-job="'+esc(j.id)+'" '+(state.approvedSelections[j.id]?'checked':'')+' aria-label="Select '+esc(j.job_title)+'"></td><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · '+esc(money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):''))+'</small></td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qualificationClass+'">'+esc(j.qualification_status)+'</span></td><td><select class="form-control" data-approved-status data-job="'+esc(j.id)+'"><option value="approved" '+(draft==='approved'?'selected':'')+'>Approved</option><option value="new" '+(draft==='new'?'selected':'')+'>To be reviewed</option><option value="skipped" '+(draft==='skipped'?'selected':'')+'>Skipped</option><option value="rejected" '+(draft==='rejected'?'selected':'')+'>Rejected</option></select></td><td><small>'+(res?'Resume ✓':'Resume missing')+'</small><small>'+(letter?'Cover letter ✓':'Cover letter missing')+'</small></td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">Open posting / Apply ↗</a></td></tr>';
- }).join('')+'</tbody></table></div></section>';
- return html;
+  const draft=state.approvedStatusDrafts[j.id]||'approved',qual=j.qualification_status==='Needs Verification'?'warn':j.qualification_status==='Not Qualified'?'red':'neutral';
+  return '<tr><td><input type="checkbox" data-approved-select data-job="'+esc(j.id)+'" '+(state.approvedSelections[j.id]?'checked':'')+' aria-label="Select '+esc(j.job_title)+'"></td><td><strong>'+esc(j.job_title)+'</strong><small>'+esc(j.company)+(j.requisition_id?' · Req '+esc(j.requisition_id):'')+'</small><small>'+esc(j.location)+' · '+esc(j.work_arrangement||'Unknown')+' · <span class="'+(j.salary_min==null?'salary-unlisted':'')+'">'+esc(money(j.salary_min,j.currency)+(j.salary_max?' – '+money(j.salary_max,j.currency):''))+'</span></small>'+(j.concerns?'<div class="concern-note">⚠ '+esc(j.concerns)+'</div>':'')+'</td><td><strong>'+esc(j.fit_score??'—')+(j.fit_score!=null?'/100':'')+'</strong></td><td><span class="badge '+qual+'">'+esc(j.qualification_status)+'</span></td><td>'+jobStatusSelect(j,draft,'data-approved-status')+'</td><td><div class="'+(!res||!letter?'document-needs-attention':'')+'">'+(res?'Resume ready':'Resume missing')+' · '+(letter?'Cover letter ready':'Cover letter missing')+'</div>'+(app?'<button class="btn ghost small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">'+(!res||!letter?'Add documents':COPY.viewDocuments)+'</button>':'')+'</td><td><a class="btn outline small" target="_blank" rel="noopener noreferrer" href="'+esc(safeUrl(j.job_url))+'">'+COPY.openPosting+'</a></td></tr>';
+ }).join('')+'</tbody></table></div></section>';return html;
 }
 function queuePage(status,title,description){
  return head(operatorEyebrow(),title,description,customerPicker())+jobResultsPanel(status);
 }
 function newResultsPage(){return newReviewTriagePage();}
-function submittedResultsPage(){return queuePage('applied','Submitted','Applications confirmed as submitted to the employer.');}
-function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs intentionally retained but not currently being pursued.');}
-function allResultsPage(){return queuePage('all','All search results','Complete search-result history for the selected customer, including rejected items.');}
+function submittedResultsPage(){return queuePage('applied','Submitted','Applications with recorded employer submission confirmations.');}
+function skippedResultsPage(){return queuePage('skipped','Skipped','Jobs you chose not to pursue.');}
+function allResultsPage(){return queuePage('all','All results','Every job found or imported for this customer.');}
 function workbenchPage(){
  const id=currentCustomer(),a=matchingApps(id).filter(x=>x.status!=='closed').sort((x,y)=>x.status==='submitted'?1:y.status==='submitted'?-1:0);
- let html=head('Step 2 · Staff operations','Approved applications','Work directly from each approved job. Upload the right documents, open the original posting, submit manually, then record the confirmation.',customerPicker());
+ let html=head('Step 2 · Staff operations','Approved applications','Prepare documents and record confirmed employer submissions.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
  if(!a.length)return html+'<div class="card empty"><strong>No approved jobs yet</strong>Wait for customer review before preparing documents.</div>';
  const count=a.reduce((n,app)=>n+['resume','cover_letter'].filter(kind=>!!appliedDocFor(app.id,kind)).length,0);
- html+='<section class="card section"><div class="space"><div><strong>Batch download for this customer</strong><p class="hint">Latest resume and cover letter PDFs for each approved application, packaged by job in a ZIP. Missing documents are listed in the manifest.</p></div><button class="btn outline" data-action="download-all-documents" '+(!count?'disabled':'')+'>Download all resumes &amp; cover letters ('+count+')</button></div></section>';
+ html+='<section class="card section"><div class="space"><div><strong>Batch download for this customer</strong><p class="hint">Latest resume and cover letter PDFs for each approved application, packaged by job in a ZIP. Missing documents are listed in the manifest.</p></div><button class="btn outline" data-action="download-all-documents" '+(!count?'disabled':'')+'>Download documents ('+count+')</button></div></section>';
  html+='<div class="flex-col">'+a.map(app=>{let j=byId(state.jobs,app.job_id),res=docFor(app.id,'resume'),letter=docFor(app.id,'cover_letter'),can=canPrepare(app);
- return '<article class="card"><div class="space"><div><span class="pill">'+esc(app.application_code)+'</span><h3 style="margin:9px 0 3px">'+esc(j?.job_title||'Unknown job')+'</h3><p class="muted">'+esc(j?.company||'')+' · '+esc(j?.location||'')+'</p></div>'+statusBadge(app.status)+'</div><p>'+esc(j?.fit_reason||'')+'</p><div class="detail"><div class="space"><span>Resume</span>'+(res?'<span class="badge">v'+res.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div><div class="space" style="margin-top:8px"><span>Cover letter</span>'+(letter?'<span class="badge">v'+letter.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div></div><div class="stack">'+docButtons(app)+'<a href="'+esc(safeUrl(j?.job_url))+'" class="btn outline small" target="_blank" rel="noopener noreferrer">Open employer posting ↗</a></div><div class="stack section">'+(app.status==='submitted'?'<span class="badge">Submitted '+fmtDate(app.submitted_at)+'</span><span class="hint">'+esc(app.submission_reference||'')+'</span>': '<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">Manage files</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="ready" data-app="'+esc(app.id)+'">Mark ready</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="in_progress" data-app="'+esc(app.id)+'">In progress</button><button class="btn" '+(!can||!['ready','in_progress'].includes(app.status)?'disabled':'')+' data-action="submit" data-app="'+esc(app.id)+'">Mark submitted</button><button class="btn ghost small" data-action="status" data-status="blocked" data-app="'+esc(app.id)+'">Blocked</button>')+'</div></article>'}).join('')+'</div>';
+ return '<article class="card"><div class="space"><div><span class="pill">'+esc(app.application_code)+'</span><h3 style="margin:9px 0 3px">'+esc(j?.job_title||'Unknown job')+'</h3><p class="muted">'+esc(j?.company||'')+' · '+esc(j?.location||'')+'</p></div>'+statusBadge(app.status)+'</div><p>'+esc(j?.fit_reason||'')+'</p><div class="detail"><div class="space"><span>Resume</span>'+(res?'<span class="badge">v'+res.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div><div class="space" style="margin-top:8px"><span>Cover letter</span>'+(letter?'<span class="badge">v'+letter.version+' saved</span>':'<span class="badge warn">Missing</span>')+'</div></div><div class="stack">'+docButtons(app)+'<a href="'+esc(safeUrl(j?.job_url))+'" class="btn outline small" target="_blank" rel="noopener noreferrer">Open posting ↗</a></div><div class="stack section">'+(app.status==='submitted'?'<span class="badge">Submitted '+fmtDate(app.submitted_at)+'</span><span class="hint">'+esc(app.submission_reference||'')+'</span>': '<button class="btn outline small" data-action="navigate" data-page="documents" data-app="'+esc(app.id)+'">View documents</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="ready" data-app="'+esc(app.id)+'">Mark ready</button><button class="btn outline small" '+(!can?'disabled':'')+' data-action="status" data-status="in_progress" data-app="'+esc(app.id)+'">In progress</button><button class="btn" '+(!can||!['ready','in_progress'].includes(app.status)?'disabled':'')+' data-action="submit" data-app="'+esc(app.id)+'">Record submission</button><button class="btn ghost small" data-action="status" data-status="blocked" data-app="'+esc(app.id)+'">Blocked</button>')+'</div></article>'}).join('')+'</div>';
  return html;
 }
 function documentsPage(){
  const id=currentCustomer(),a=matchingApps(id).filter(x=>!['submitted','closed','in_progress'].includes(x.status));
- let html=head(operatorEyebrow(),'Documents','Each PDF belongs to one approved application. Use a batch ZIP with manifest.csv, or upload a single PDF.',customerPicker());
+ let html=head(operatorEyebrow(),'Documents','Upload documents for approved applications.',customerPicker());
  if(!id)return html+'<div class="card empty">No customer assigned.</div>';
- html+='<div class="grid two"><section class="card"><h2>Bulk ZIP upload</h2><p class="muted">ChatGPT export: application-ID folders plus manifest.csv. The website verifies ownership and PDF files before uploading.</p><div class="file-box section"><input id="batchZip" type="file" accept=".zip,application/zip"></div><p class="hint"><a href="../manifest_template.csv" target="_blank">Manifest CSV example ↗</a></p>'+(state.zipPreview?'<p class="section"><span class="badge">'+state.zipPreview.items.length+' complete application packages validated</span></p><button class="btn" data-action="commit-zip">Upload validated documents</button>':'')+'</section><section class="card"><h2>Individual PDF correction</h2><p class="muted">Select a job and document type. A new version is stored without overwriting past submissions.</p><form id="singleDocumentForm"><div class="field"><label for="singleApp">Approved application</label><select id="singleApp">'+a.map(x=>{const j=byId(state.jobs,x.job_id);return '<option value="'+esc(x.id)+'" '+(window.location.hash.endsWith(x.id)?'selected':'')+'>'+esc(x.application_code)+' · '+esc(j?.job_title||'')+'</option>'}).join('')+'</select></div><div class="field"><label for="singleKind">Document type</label><select id="singleKind"><option value="resume">Resume</option><option value="cover_letter">Cover letter</option></select></div><div class="field"><label for="singlePdf">PDF file</label><input id="singlePdf" type="file" accept=".pdf,application/pdf" required></div><button class="btn" type="submit" '+(!a.length?'disabled':'')+'>Upload new version</button></form></section></div>';
+ html+='<div class="grid two"><section class="card"><h2>Bulk ZIP upload</h2><p class="muted">Upload a ZIP containing documents and manifest.csv.</p><div class="file-box section"><input id="batchZip" type="file" accept=".zip,application/zip"></div><p class="hint"><a href="../manifest_template.csv" target="_blank">Manifest CSV example ↗</a></p>'+(state.zipPreview?'<p class="section"><span class="badge">'+state.zipPreview.items.length+' complete application packages validated</span></p><button class="btn" data-action="commit-zip">Upload documents</button>':'')+'</section><section class="card"><h2>Individual PDF correction</h2><p class="muted">Upload a new PDF version. Submitted files stay unchanged.</p><form id="singleDocumentForm"><div class="field"><label for="singleApp">Approved application</label><select id="singleApp">'+a.map(x=>{const j=byId(state.jobs,x.job_id);return '<option value="'+esc(x.id)+'" '+(window.location.hash.endsWith(x.id)?'selected':'')+'>'+esc(x.application_code)+' · '+esc(j?.job_title||'')+'</option>'}).join('')+'</select></div><div class="field"><label for="singleKind">Document type</label><select id="singleKind"><option value="resume">Resume</option><option value="cover_letter">Cover letter</option></select></div><div class="field"><label for="singlePdf">PDF file</label><input id="singlePdf" type="file" accept=".pdf,application/pdf" required></div><button class="btn" type="submit" '+(!a.length?'disabled':'')+'>Upload PDF</button></form></section></div>';
  html+='<section class="card section"><h2>Document readiness</h2>'+(a.length?a.map(x=>{const j=byId(state.jobs,x.job_id);return '<div class="detail space"><div><strong>'+esc(x.application_code)+'</strong> · '+esc(j?.job_title||'')+'<div class="hint">'+(docFor(x.id,'resume')?'Resume ✓':'Resume missing')+' · '+(docFor(x.id,'cover_letter')?'Cover letter ✓':'Cover letter missing')+'</div></div>'+statusBadge(x.status)+'</div>'}).join(''):'<div class="empty">No applications eligible for document changes.</div>')+'</section>';
  return html;
 }
 function adminPage(){
  if(state.account.role!=='admin')return '<section class="card">Not authorized.</section>';
  const all=state.accounts,staff=all.filter(a=>a.role==='staff'),assignees=all.filter(a=>a.role==='staff'||a.role==='admin'),customers=all.filter(a=>a.role==='customer');
- let html=head('Super admin','Accounts & staff assignments','Grant staff access only to designated customer accounts. The pilot can assign all ten customers to one staff member.');
+ let html=head('Super admin','Accounts & staff assignments','Manage roles and customer assignments.');
  html+='<section class="card section"><h2>Invite a customer or staff member</h2><p class="hint">Send a secure invitation. The recipient sets their own password; no password is shared with administrators.</p><form id="inviteAccountForm"><div class="grid">'+field('inviteName','Full name','','text','required maxlength="120"')+field('inviteEmail','Email address','','email','required autocomplete="off"')+'<div class="field"><label for="inviteRole">Account type</label><select id="inviteRole" class="form-control"><option value="customer">Customer</option><option value="staff">Staff</option></select></div></div><button class="btn" type="submit">Send invitation</button></form></section>';
  html+='<div class="grid"><div class="card stat"><div class="name">Customers</div><div class="value">'+customers.length+'</div></div><div class="card stat"><div class="name">Staff</div><div class="value">'+staff.length+'</div></div><div class="card stat"><div class="name">Assignments</div><div class="value">'+state.assignments.length+'</div></div></div>';
- html+='<section class="card section"><h2>Account roles</h2><div class="table-wrap"><table><thead><tr><th>Account</th><th>Current role</th><th>Change role</th></tr></thead><tbody>'+all.map(a=>'<tr><td><strong>'+esc(a.full_name||'Name not set')+'</strong><small>'+esc(a.email)+'</small></td><td>'+statusBadge(a.role)+'</td><td><div class="stack"><select id="role-'+esc(a.id)+'" class="form-control" style="max-width:145px" '+(a.id===state.account.id?'disabled':'')+'>'+['customer','staff','admin'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')+'</select><button class="btn small" data-action="set-role" data-user="'+esc(a.id)+'" '+(a.id===state.account.id?'disabled':'')+'>Save role</button></div></td></tr>').join('')+'</tbody></table></div></section>';
+ html+='<section class="card section"><h2>Account roles</h2><div class="table-wrap"><table><thead><tr><th>Account</th><th>Current role</th><th>Change role</th></tr></thead><tbody>'+all.map(a=>'<tr><td><strong>'+esc(a.full_name||'Name not set')+'</strong><small>'+esc(a.email)+'</small></td><td>'+statusBadge(a.role)+'</td><td><div class="stack"><select id="role-'+esc(a.id)+'" class="form-control" style="max-width:145px" '+(a.id===state.account.id?'disabled':'')+'>'+['customer','staff','admin'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')+'</select><button class="btn small" data-action="set-role" data-user="'+esc(a.id)+'" '+(a.id===state.account.id?'disabled':'')+'>Change role</button></div></td></tr>').join('')+'</tbody></table></div></section>';
  html+='<section class="card section"><h2>Assign staff to customers</h2><div class="table-wrap"><table><thead><tr><th>Customer</th>'+assignees.map(s=>'<th>'+esc(s.full_name||s.email)+(s.role==='admin'?' (Admin)':'')+'</th>').join('')+'</tr></thead><tbody>'+customers.map(c=>'<tr><td><strong>'+esc(c.full_name||c.email)+'</strong></td>'+assignees.map(s=>'<td><label><input type="checkbox" data-change="assign" data-customer="'+esc(c.id)+'" data-staff="'+esc(s.id)+'" '+(state.assignments.some(x=>x.staff_id===s.id&&x.customer_id===c.id)?'checked':'')+'> Assigned</label></td>').join('')+'</tr>').join('')+'</tbody></table></div>'+(assignees.length===0?'<p class="hint">Create a staff account or use an administrator account to assign customers.</p>':'')+'</section>';
  return html;
 }
@@ -616,7 +620,7 @@ function openExpandedEditor(fieldId,startVoice=false){
  if(!source)throw Error('Field unavailable.');
  const label=source.closest('.field')?.querySelector('label')?.textContent||'Edit text';
  const supported=!!speechRecognitionClass();
- openDialog(label,'<textarea id="expandedFieldEditor" class="expanded-field-editor">'+esc(source.value)+'</textarea><div class="expanded-editor-footer"><div><span class="hint">Use the larger editor for longer profile and search instructions.</span><br><span class="hint">'+(supported?'Voice transcription uses your browser speech-recognition service and may process audio through the browser provider.':'Voice transcription is not supported by this browser.')+'</span></div><div class="stack">'+(supported?'<button class="field-tool-icon large" type="button" data-action="start-expanded-voice" aria-label="Start voice input" title="Start voice input">🎤</button><button class="field-tool-icon large" type="button" data-action="stop-expanded-voice" aria-label="Stop voice input" title="Stop voice input" disabled>⏹</button>':'')+'<button class="btn" type="button" data-action="save-expanded-field" data-field="'+esc(fieldId)+'">Use This Text</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></div></div>',true);
+ openDialog(label,'<textarea id="expandedFieldEditor" class="expanded-field-editor">'+esc(source.value)+'</textarea><div class="expanded-editor-footer"><div><span class="hint">Use the larger editor for longer profile and search instructions.</span><br><span class="hint">'+(supported?'Voice transcription uses your browser speech-recognition service and may process audio through the browser provider.':'Voice transcription is not supported by this browser.')+'</span></div><div class="stack">'+(supported?'<button class="field-tool-icon large" type="button" data-action="start-expanded-voice" aria-label="Start voice input" title="Start voice input">🎤</button><button class="field-tool-icon large" type="button" data-action="stop-expanded-voice" aria-label="Stop voice input" title="Stop voice input" disabled>⏹</button>':'')+'<button class="btn" type="button" data-action="save-expanded-field" data-field="'+esc(fieldId)+'">Use text</button><button class="btn ghost" type="button" data-action="close-dialog">Cancel</button></div></div>',true);
  const editor=$('#expandedFieldEditor');
  editor.focus();
  editor.setSelectionRange(editor.value.length,editor.value.length);
@@ -661,7 +665,7 @@ async function showAiPromptPreview(customer){
  const result=await response.json().catch(()=>({}));
  if(!response.ok||!result.ok)throw Error(result.error||'Could not load AI prompt preview.');
  state.aiPromptPreview=result.full_prompt||'';
- openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy Prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
+ openDialog('Full AI Search Prompt','<div class="prompt-meta"><span class="badge neutral">Model: '+esc(result.model||'configured model')+'</span><span class="badge neutral">'+esc(result.suppress_count||0)+' previously seen jobs suppressed</span></div><p class="hint">This is the saved prompt MatchPath will use for the selected customer.</p><pre class="prompt-preview">'+esc(state.aiPromptPreview)+'</pre><div class="stack"><button class="btn outline small" data-action="copy-ai-prompt">Copy prompt</button><button class="btn ghost small" data-action="close-dialog">Close</button></div>',true);
  return result;
 }
 async function callProfileAnalysis(action,extra={}){
@@ -819,7 +823,7 @@ async function handleClick(target){
  if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
- if(action==='navigate'){state.page=target.dataset.page;if(state.page==='profile')state.profileEditSection=null;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
+ if(action==='navigate'){if(state.page!==target.dataset.page&&!confirmDiscardChanges())return;if(state.page!==target.dataset.page)clearStatusDrafts();state.page=target.dataset.page;if(state.page==='profile')state.profileEditSection=null;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
  if(action==='expand-field'){openExpandedEditor(target.dataset.field,false);return}
  if(action==='voice-field'){openExpandedEditor(target.dataset.field,true);return}
  if(action==='start-expanded-voice'){
@@ -833,6 +837,8 @@ async function handleClick(target){
   stopVoiceInput();source.value=editor.value;source.dispatchEvent(new Event('input',{bubbles:true}));closeDialog();return;
  }
  if(action==='edit-profile-section'){
+   if(state.profileDirty&&!confirmDiscardChanges())return;
+   state.profileDirty=false;
   const role=state.account?.role;
   const customer=currentCustomer();
   const authorized=role==='customer'?customer===state.me.id:(role==='admin'||role==='staff');
@@ -899,7 +905,7 @@ async function handleClick(target){
  if(action==='view-general-resume'){
   const row=state.generalResumes.find(x=>x.id===target.dataset.resume&&x.customer_id===currentCustomer());
   if(!row)throw Error('General resume unavailable.');
-  openDialog(row.category_name+' · General Resume v'+row.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(row.status)+'</span><span class="badge neutral">'+esc(row.model||'configured model')+'</span></div><p class="hint">'+esc(row.focus_summary||'Reusable baseline resume')+'</p>'+generalResumePreviewHtml(row)+'<div class="stack section"><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(row.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(row.id)+'">Download PDF</button><button class="btn outline small" type="button" data-action="copy-general-resume" data-resume="'+esc(row.id)+'">Copy Resume Text</button><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
+  openDialog(row.category_name+' · General Resume v'+row.version,'<div class="prompt-meta"><span class="badge neutral">'+esc(row.status)+'</span><span class="badge neutral">'+esc(row.model||'configured model')+'</span></div><p class="hint">'+esc(row.focus_summary||'Reusable baseline resume')+'</p>'+generalResumePreviewHtml(row)+'<div class="stack section"><button class="btn small" type="button" data-action="download-general-resume" data-format="docx" data-resume="'+esc(row.id)+'">Download DOCX</button><button class="btn small" type="button" data-action="download-general-resume" data-format="pdf" data-resume="'+esc(row.id)+'">Download PDF</button><button class="btn outline small" type="button" data-action="copy-general-resume" data-resume="'+esc(row.id)+'">Copy resume text</button><button class="btn ghost small" type="button" data-action="close-dialog">Close</button></div>',true);
   return;
  }
  if(action==='copy-general-resume'){
@@ -941,32 +947,15 @@ async function handleClick(target){
   notice((data?.updated||updates.length)+' review decision'+((data?.updated||updates.length)===1?'':'s')+' saved. Unchanged jobs remain To be reviewed.');
   return;
  }
- if(action==='save-job-status'){
-  if(!canOperateUi())throw Error('This workspace is not authorized to change job status.');
-  const job=byId(state.jobs,target.dataset.job);if(!job||job.customer_id!==currentCustomer())throw Error('Job unavailable for this customer.');
-  const select=$('#job-status-'+CSS.escape(job.id));if(!select)throw Error('Status control unavailable.');
-  const next=select.value;
-  const app=state.apps.find(a=>a.job_id===job.id&&a.status!=='closed')||state.apps.find(a=>a.job_id===job.id);
-  const current=jobResultUiStatus(job);
-  if(next===current){notice('No status change to save.');return;}
-  if(current==='applied')throw Error('Applied records are immutable.');
-  if(next==='applied'){
-   if(!app||app.status==='closed')throw Error('Approve the job first so an application exists.');
-   if(!canPrepare(app))throw Error('Resume and cover letter must be uploaded before marking Applied.');
-   if(!['ready','in_progress'].includes(app.status)){
-    const {error:readyError}=await state.sb.rpc('staff_set_application_status',{p_application:app.id,p_status:'ready',p_reference:null,p_note:'Prepared for confirmed submission.'});
-    if(readyError)throw readyError;
-   }
-   openDialog('Confirm actual job application','<p class="warning">Use Applied only after the employer application was genuinely submitted. Record a confirmation/reference or verifiable acknowledgment.</p><form id="submitForm" data-app="'+esc(app.id)+'" data-return-page="queue-submitted">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm Applied</button></form>');
-   return;
-  }
-  const {error}=await state.sb.rpc('operator_set_job_review_status',{p_job:job.id,p_status:next});
+ if(action==='save-result-statuses'){
+  if(!canOperateUi())throw Error('Not authorized to change job statuses.');
+  const updates=Object.entries(state.resultStatusDrafts).map(([job_id,status])=>({job_id,status}));
+  if(!updates.length){notice(COPY.emptyChanges);return;}
+  if(updates.length>100)throw Error('Save up to 100 status changes at a time.');
+  const {data,error}=await state.sb.rpc('operator_bulk_set_job_statuses',{p_updates:updates});
   if(error)throw error;
-  await loadData(state.me);
-  state.page=next==='new'?'queue-new':next==='approved'?'queue-approved':next==='skipped'?'queue-skipped':'queue-all';
-  render();
-  notice('Job status saved as '+(next==='new'?'To be reviewed':next[0].toUpperCase()+next.slice(1))+'.');
-  return;
+  state.resultStatusDrafts={};await loadData(state.me);
+  notice((data?.updated||updates.length)+' job status change'+(updates.length===1?'':'s')+' saved.');return;
  }
  if(action==='approved-resume-batch'){
   if(!canOperateUi())throw Error('Not authorized.');
@@ -974,14 +963,13 @@ async function handleClick(target){
  }
  if(action==='approved-save-status'){
   if(!canOperateUi())throw Error('Not authorized.');
-  const ids=approvedSelectionIds();
-  const updates=ids.map(job_id=>({job_id,status:state.approvedStatusDrafts[job_id]||'approved'})).filter(x=>x.status!=='approved');
-  if(!updates.length){notice('No selected status changes to save.');return;}
+  const updates=Object.entries(state.approvedStatusDrafts).map(([job_id,status])=>({job_id,status}));
+  if(!updates.length){notice('No unsaved changes.');return;}
   const {data,error}=await state.sb.rpc('operator_bulk_set_job_statuses',{p_updates:updates});
   if(error)throw error;
   state.approvedSelections={};state.approvedStatusDrafts={};
   await loadData(state.me);state.page='queue-approved';render();
-  notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
+  notice((data?.updated||updates.length)+' job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
  }
  if(action==='revoke-document-consent'){
   if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers may revoke their own consent.');
@@ -991,6 +979,7 @@ async function handleClick(target){
   await loadData(state.me);notice('Document authorization withdrawn.');return;
  }
  if(action==='approved-mark-submitted'){
+  if(draftCount()>0)throw Error('Save or discard your status changes before recording submissions.');
   if(!canRecordSubmission())throw Error('Standing customer document authorization for this submission mode is required.');
   if(!canOperateUi())throw Error('Not authorized.');
   const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
@@ -999,7 +988,7 @@ async function handleClick(target){
   const missing=rows.filter(x=>!canPrepare(x.app));
   if(missing.length)throw Error(missing.length+' selected application'+(missing.length===1?' is':'s are')+' missing a resume or cover letter.');
   state.bulkSubmitApps=rows.map(x=>x.app.id);
-  openDialog('Confirm selected submissions','<p class="warning">Only confirm jobs that were genuinely submitted to the employer. Enter a confirmation/reference for each application.</p><form id="bulkSubmitForm">'+rows.map(x=>'<div class="field"><label for="bulk-ref-'+esc(x.app.id)+'">'+esc(x.job.job_title)+' · '+esc(x.job.company)+'</label><input id="bulk-ref-'+esc(x.app.id)+'" type="text" minlength="3" required placeholder="Employer confirmation / reference"></div>').join('')+area('bulkSubmissionNotes','Shared submission note (optional)')+'<button class="btn" type="submit">Confirm '+rows.length+' Submitted</button></form>');
+  openDialog('Confirm selected submissions','<p class="warning">Only confirm jobs that were genuinely submitted to the employer. Enter a confirmation/reference for each application.</p><form id="bulkSubmitForm">'+rows.map(x=>'<div class="field"><label for="bulk-ref-'+esc(x.app.id)+'">'+esc(x.job.job_title)+' · '+esc(x.job.company)+'</label><input id="bulk-ref-'+esc(x.app.id)+'" type="text" minlength="3" required placeholder="Employer confirmation / reference"></div>').join('')+area('bulkSubmissionNotes','Shared submission note (optional)')+'<button class="btn" type="submit">Confirm '+rows.length+' submission'+(rows.length===1?'':'s')+'</button></form>');
   return;
  }
  if(action==='view-ai-prompt'){
@@ -1114,8 +1103,9 @@ async function handleClick(target){
   if(error)throw error;await loadData();notice('Application status updated.');return;
  }
  if(action==='submit'){
+  if(draftCount()>0)throw Error('Save or discard your changes before recording a submission.');
   const a=byId(state.apps,target.dataset.app);if(!a)throw Error('Application not found');
-  openDialog('Confirm actual job application','<p class="warning">Only mark as submitted after completing the employer application. Record a confirmation/reference or verifiable submission acknowledgment.</p><form id="submitForm" data-app="'+esc(a.id)+'">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm submitted</button></form>');return;
+  openDialog('Confirm actual job application','<p class="warning">Only mark as submitted after completing the employer application. Record a confirmation/reference or verifiable submission acknowledgment.</p><form id="submitForm" data-app="'+esc(a.id)+'">'+field('submissionReference','Employer confirmation / reference','','text','required minlength="3"')+area('submissionNotes','Submission notes (optional)')+'<button class="btn" type="submit">Confirm submission</button></form>');return;
  }
  if(action==='download-all-documents'){await downloadAllCustomerDocuments();return;}
  if(action==='download'){
@@ -1197,7 +1187,7 @@ async function handleSubmit(form){
   const pendingFiles=canUploadReference?[...($('#referenceFiles')?.files||[])]:[];
   const changed=profileValuesChanged(values);
   if(!changed&&!pendingFiles.length){
-   state.profileEditSection=null;render();notice('No changes to save.');return;
+   state.profileEditSection=null;state.profileDirty=false;render();notice('No changes to save.');return;
   }
 
   if(changed){
@@ -1212,7 +1202,7 @@ async function handleSubmit(form){
 
   const uploaded=await uploadReferenceResumes(customer,pendingFiles);
 
-  state.profileEditSection=null;
+  state.profileEditSection=null;state.profileDirty=false;
   await loadData(state.me);
   state.page='profile';
   render();
@@ -1379,6 +1369,7 @@ document.addEventListener('submit',async e=>{
  try{await handleSubmit(form)}catch(err){notice(errorMsg(err),true)}finally{state.loading=false;form.classList.remove('loading')}
 });
 document.addEventListener('input',e=>{
+ if(e.target.closest('#profileForm')&&!e.target.disabled)state.profileDirty=true;
  if(e.target.id!=='resultSearch')return;
  state.resultSearch=e.target.value;
  const cursor=e.target.selectionStart??state.resultSearch.length;
@@ -1391,6 +1382,7 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.closest('#profileForm')&&!e.target.disabled)state.profileDirty=true;
   if(e.target.id==='reviewReferenceFiles'){
    if(state.account?.role!=='admin')throw Error('Administrator access required to upload customer resumes.');
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
@@ -1430,6 +1422,11 @@ document.addEventListener('change',async e=>{
    updateApprovedBulkState();
    return;
   }
+  if(e.target.matches('[data-result-status]')){
+   const job=e.target.dataset.job,status=e.target.value,original=jobResultUiStatus(byId(state.jobs,job)||{});
+   if(status===original)delete state.resultStatusDrafts[job];else state.resultStatusDrafts[job]=status;
+   updateResultSaveState();return;
+  }
   if(e.target.matches('[data-review-choice]')){
    const job=e.target.dataset.job,status=e.target.value;
    if(status==='new')delete state.reviewDrafts[job];
@@ -1438,12 +1435,12 @@ document.addEventListener('change',async e=>{
    return;
   }
   if(e.target.id==='workspaceSwitch'&&state.account?.role==='admin'){
-   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
+   if(!confirmDiscardChanges()){e.target.value=state.workspaceView;return;}state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;clearStatusDrafts();render();return;
   }
   if(e.target.id==='previewStaffSelect'&&state.account?.role==='admin'){
-   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
+   if(!confirmDiscardChanges()){e.target.value=state.previewStaffId||'';return;}state.previewStaffId=e.target.value||null;state.selectedCustomer=null;clearStatusDrafts();render();return;
   }
-  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return}
+  if(e.target.id==='customerSelect'){if(!confirmDiscardChanges()){e.target.value=state.selectedCustomer||'';return;}state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;clearStatusDrafts();render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
   if(e.target.dataset.change==='assign'){
@@ -1452,7 +1449,8 @@ document.addEventListener('change',async e=>{
   }
  }catch(err){notice(errorMsg(err),true)}
 });
-$('#logoutBtn').addEventListener('click',async()=>{if(state.sb)await state.sb.auth.signOut();state.me=null;state.account=null;state.page='overview';renderAuth('login');notice('Signed out.')});
+window.addEventListener('beforeunload',e=>{if(!draftCount())return;e.preventDefault();e.returnValue='';});
+$('#logoutBtn').addEventListener('click',async()=>{if(!confirmDiscardChanges())return;if(state.sb)await state.sb.auth.signOut();state.me=null;state.account=null;state.page='overview';renderAuth('login');notice('Signed out.')});
 $('#dialogClose').addEventListener('click',closeDialog);
 $('#dialog').addEventListener('click',e=>{if(e.target.id==='dialog')closeDialog()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog()});
