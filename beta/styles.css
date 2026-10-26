@@ -142,3 +142,11 @@
 .resume-preview-header p{margin:4px 0;color:#667085}
 .resume-preview-role{padding:10px 0}
 .resume-preview-role .checklist{margin-top:8px}
+
+/* Shared job-table cues: concerns are actionable; unknown salaries are secondary. */
+.concern-note{margin-top:7px;padding:7px 9px;border:1px solid #e6c68d;border-radius:7px;background:#fff8e9;color:#765414;font-size:12px;line-height:1.4}
+.document-needs-attention{color:#915c10;font-weight:750}
+.salary-unlisted{color:#86929b;font-weight:400}
+.extra-evidence{width:100%;margin-top:7px;color:#46616d;font-size:12px}
+.extra-evidence summary{cursor:pointer;font-weight:650}
+.extra-evidence .section{margin-top:8px}
