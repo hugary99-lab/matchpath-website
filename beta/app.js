@@ -144,7 +144,7 @@ function profileValuesChanged(values,p=currentProfile()){
   ['preferred_locations',values.preferred_locations,p.preferred_locations],['salary_min',values.salary_min,p.salary_min],
   ['work_preference',values.work_preference,p.work_preference],['exclusions',values.exclusions,p.exclusions],
   ['search_instructions',values.search_instructions,p.search_instructions],['linkedin_url',values.linkedin_url,p.linkedin_url],
-  ['salary_target',values.salary_target,p.salary_target],['service_tier',values.service_tier,p.service_tier],
+  ['salary_target',values.salary_target,p.salary_target],['service_tier',values.service_tier??p.service_tier,p.service_tier],
   ['salary_currency',values.salary_currency,p.salary_currency],['transferable_roles',values.transferable_roles,p.transferable_roles],
   ['employment_types',values.employment_types,p.employment_types],['industries',values.industries,p.industries],
   ['relocation_preferences',values.relocation_preferences,p.relocation_preferences],['pension_preferences',values.pension_preferences,p.pension_preferences],
@@ -981,7 +981,15 @@ async function handleClick(target){
   await loadData(state.me);state.page='queue-approved';render();
   notice((data?.updated||updates.length)+' selected job status'+((data?.updated||updates.length)===1?'':'es')+' updated.');return;
  }
+ if(action==='revoke-document-consent'){
+  if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers may revoke their own consent.');
+  if(!confirm('Withdraw permission for future AI application document preparation and use? Existing submissions remain recorded.'))return;
+  const {error}=await state.sb.rpc('customer_set_document_authorization',{p_accept:false,p_allow_staff_submit:false});
+  if(error)throw error;
+  await loadData(state.me);notice('Document authorization withdrawn.');return;
+ }
  if(action==='approved-mark-submitted'){
+  if(!canRecordSubmission())throw Error('Standing customer document authorization for this submission mode is required.');
   if(!canOperateUi())throw Error('Not authorized.');
   const ids=approvedSelectionIds();if(!ids.length)throw Error('Select at least one job.');
   const rows=ids.map(id=>{const job=byId(state.jobs,id);const app=state.apps.find(a=>a.job_id===id&&a.status!=='closed');return {job,app}}).filter(x=>x.job&&x.app);
@@ -1170,8 +1178,16 @@ async function handleSubmit(form){
   if(loaded)notice('Signed in securely.');
   return;
  }
+ if(type==='documentConsentForm'){
+  if(state.account?.role!=='customer'||currentCustomer()!==state.me.id)throw Error('Only customers can authorize their own document use.');
+  if(!$('#consentConfirm')?.checked)throw Error('Accept the disclosure to continue.');
+  const {error}=await state.sb.rpc('customer_set_document_authorization',{p_accept:true,p_allow_staff_submit:!!$('#consentManaged')?.checked});
+  if(error)throw error;
+  await loadData(state.me);notice('Standing AI document authorization saved. Individual resume approval is not required.');return;
+ }
  if(type==='profileForm'){
   const values=profileFormValues();
+  if(state.account?.role==='customer')delete values.service_tier;
   const role=state.account.role;
   const operator=role!=='customer';
   const customer=currentCustomer();if(!customer)throw Error('Customer unavailable.');
@@ -1305,6 +1321,7 @@ async function validateResumeFile(file){
 async function uploadDocument(appId,kind,file){
  const app=byId(state.apps,appId);if(!app||app.customer_id!==currentCustomer()||!['approved','preparing','ready','blocked'].includes(app.status))throw Error('Application cannot receive documents');
  if(!['resume','cover_letter'].includes(kind))throw Error('Invalid document type');
+ if(!currentDocumentAuthorization())throw Error('Customer standing consent is required before application documents can be prepared.');
  await validatePdf(file);
  const path=app.customer_id+'/'+app.id+'/'+crypto.randomUUID()+'.pdf';
  const {error}=await state.sb.storage.from('matchpath-documents').upload(path,file,{contentType:'application/pdf',upsert:false});
