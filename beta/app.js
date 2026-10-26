@@ -13,7 +13,7 @@ const field=(id,label,value='',type='text',extra='')=>{const tools=['text','url'
 const area=(id,label,value='',hint='')=>'<div class="field"><div class="field-label-row"><label for="'+esc(id)+'">'+esc(label)+'</label><div class="field-editor-tools"><button class="field-tool-icon" type="button" data-action="expand-field" data-field="'+esc(id)+'" aria-label="Expand editor" title="Expand editor">⛶</button><button class="field-tool-icon" type="button" data-action="voice-field" data-field="'+esc(id)+'" aria-label="Voice input" title="Voice input">🎤</button></div></div><textarea id="'+esc(id)+'">'+esc(value)+'</textarea>'+(hint?'<div class="input-help">'+esc(hint)+'</div>':'')+'</div>';
 const head=(k,t,d,extra='')=>'<div class="page-heading"><div><div class="eyebrow">'+esc(k)+'</div><h1>'+esc(t)+'</h1>'+(d?'<p>'+esc(d)+'</p>':'')+'</div>'+extra+'</div>';
 const notice=(message,error=false)=>{const n=$('#notice');n.textContent=message||'';n.classList.toggle('error',error);if(message)window.scrollTo({top:0,behavior:'smooth'})};
-const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],documentAuthorizations:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
+const state={sb:null,me:null,account:null,accounts:[],profiles:[],assignments:[],jobs:[],apps:[],docs:[],submitted:[],runs:[],referenceResumes:[],documentAuthorizations:[],candidateEvidence:[],searchStrategies:[],generalResumes:[],selectedCustomer:null,page:'overview',csvPreview:null,zipPreview:null,editingRole:null,loading:false,workspaceView:'admin',previewStaffId:null,resultStatusFilter:'all',resultQualificationFilter:'all',resultSearch:'',reviewDrafts:{},approvedSelections:{},approvedStatusDrafts:{},bulkSubmitApps:[],resultStatusDrafts:{},profileDirty:false,aiPromptPreview:'',aiPromptProposal:null,profileEditSection:null};
 let resultSearchTimer=null;
 let activeSpeechRecognition=null;
 let activeSpeechTarget=null;
@@ -66,6 +66,25 @@ function customerPicker(){
  return selector+'<div class="field" style="min-width:min(300px,100%);margin:0"><label for="customerSelect">Working on customer</label><select id="customerSelect">'+customers.map(x=>'<option value="'+esc(x.id)+'" '+(currentCustomer()===x.id?'selected':'')+'>'+esc(x.full_name||x.email)+'</option>').join('')+'</select></div>';
 }
 function currentProfile(){return state.profiles.find(p=>p.customer_id===currentCustomer())}
+const COPY=Object.freeze({
+ save:'Save changes',openPosting:'Open posting',viewDocuments:'View documents',
+ viewPrompt:'View AI search prompt',updatePrompt:'Update AI search prompt',
+ runSearch:'Run AI job search',recordSubmission:'Record submission',
+ confirmSubmission:'Confirm submission',emptyChanges:'No unsaved changes'
+});
+const JOB_STATUSES=Object.freeze([['new','To be reviewed'],['approved','Approved'],['skipped','Skipped'],['rejected','Rejected']]);
+function jobStatusSelect(job,value,dataAttribute,allowed=['new','approved','skipped','rejected'],disabled=false){
+ return '<select class="form-control" '+dataAttribute+' data-job="'+esc(job.id)+'" aria-label="Status for '+esc(job.job_title)+'" '+(disabled?'disabled':'')+'>'+
+ JOB_STATUSES.filter(([v])=>allowed.includes(v)).map(([v,label])=>'<option value="'+v+'" '+(value===v?'selected':'')+'>'+label+'</option>').join('')+'</select>';
+}
+function draftCount(){return Object.keys(state.reviewDrafts).length+Object.keys(state.approvedStatusDrafts).length+Object.keys(state.resultStatusDrafts).length+(state.profileDirty?1:0)}
+function confirmDiscardChanges(){return !draftCount()||confirm('You have unsaved changes. Discard them?')}
+function clearStatusDrafts(){state.reviewDrafts={};state.approvedStatusDrafts={};state.resultStatusDrafts={};state.approvedSelections={};state.profileDirty=false}
+function updateResultSaveState(){
+ const count=Object.keys(state.resultStatusDrafts).length,b=$('#saveResultChanges'),n=$('#resultChangeCount');
+ if(b)b.disabled=count===0;
+ if(n)n.textContent=count?count+' unsaved change'+(count===1?'':'s'):COPY.emptyChanges;
+}
 const currentDocumentAuthorization=()=>state.documentAuthorizations.find(a=>a.customer_id===currentCustomer()&&!a.revoked_at)||null;
 function canRecordSubmission(){const a=currentDocumentAuthorization(),r=state.account?.role,t=currentProfile()?.service_tier;return !!a&&(r==='customer'&&t==='diy'||(r==='admin'||r==='staff')&&t==='full_service'&&a.allow_managed_submission)}
 function documentConsentPanel(){
@@ -819,7 +838,7 @@ async function handleClick(target){
  if(action==='close-dialog'){closeDialog();return}
  if(action==='show-login'){renderAuth('login');return}
  if(action==='show-signup'){renderAuth('signup');return}
- if(action==='navigate'){state.page=target.dataset.page;if(state.page==='profile')state.profileEditSection=null;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
+ if(action==='navigate'){if(state.page!==target.dataset.page&&!confirmDiscardChanges())return;if(state.page!==target.dataset.page)clearStatusDrafts();state.page=target.dataset.page;if(state.page==='profile')state.profileEditSection=null;if(target.dataset.app)window.location.hash=target.dataset.app;state.csvPreview=null;state.zipPreview=null;render();return}
  if(action==='expand-field'){openExpandedEditor(target.dataset.field,false);return}
  if(action==='voice-field'){openExpandedEditor(target.dataset.field,true);return}
  if(action==='start-expanded-voice'){
@@ -833,6 +852,8 @@ async function handleClick(target){
   stopVoiceInput();source.value=editor.value;source.dispatchEvent(new Event('input',{bubbles:true}));closeDialog();return;
  }
  if(action==='edit-profile-section'){
+   if(state.profileDirty&&!confirmDiscardChanges())return;
+   state.profileDirty=false;
   const role=state.account?.role;
   const customer=currentCustomer();
   const authorized=role==='customer'?customer===state.me.id:(role==='admin'||role==='staff');
@@ -1212,7 +1233,7 @@ async function handleSubmit(form){
 
   const uploaded=await uploadReferenceResumes(customer,pendingFiles);
 
-  state.profileEditSection=null;
+  state.profileEditSection=null;state.profileDirty=false;
   await loadData(state.me);
   state.page='profile';
   render();
@@ -1379,6 +1400,7 @@ document.addEventListener('submit',async e=>{
  try{await handleSubmit(form)}catch(err){notice(errorMsg(err),true)}finally{state.loading=false;form.classList.remove('loading')}
 });
 document.addEventListener('input',e=>{
+ if(e.target.closest('#profileForm')&&!e.target.disabled)state.profileDirty=true;
  if(e.target.id!=='resultSearch')return;
  state.resultSearch=e.target.value;
  const cursor=e.target.selectionStart??state.resultSearch.length;
@@ -1391,6 +1413,7 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',async e=>{
  try{
+  if(e.target.closest('#profileForm')&&!e.target.disabled)state.profileDirty=true;
   if(e.target.id==='reviewReferenceFiles'){
    if(state.account?.role!=='admin')throw Error('Administrator access required to upload customer resumes.');
    const customer=currentCustomer();if(!customer)throw Error('Choose a customer first.');
@@ -1438,12 +1461,12 @@ document.addEventListener('change',async e=>{
    return;
   }
   if(e.target.id==='workspaceSwitch'&&state.account?.role==='admin'){
-   state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
+   if(!confirmDiscardChanges()){e.target.value=state.workspaceView;return;}state.workspaceView=e.target.value==='staff'?'staff':'admin';state.page='overview';state.selectedCustomer=null;clearStatusDrafts();render();return;
   }
   if(e.target.id==='previewStaffSelect'&&state.account?.role==='admin'){
-   state.previewStaffId=e.target.value||null;state.selectedCustomer=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return;
+   if(!confirmDiscardChanges()){e.target.value=state.previewStaffId||'';return;}state.previewStaffId=e.target.value||null;state.selectedCustomer=null;clearStatusDrafts();render();return;
   }
-  if(e.target.id==='customerSelect'){state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;state.reviewDrafts={};state.approvedSelections={};state.approvedStatusDrafts={};render();return}
+  if(e.target.id==='customerSelect'){if(!confirmDiscardChanges()){e.target.value=state.selectedCustomer||'';return;}state.selectedCustomer=e.target.value;state.csvPreview=null;state.zipPreview=null;clearStatusDrafts();render();return}
   if(e.target.id==='searchCsv'){await validateCsvFile(e.target.files?.[0]);return}
   if(e.target.id==='batchZip'){await validateZip(e.target.files?.[0]);return}
   if(e.target.dataset.change==='assign'){
@@ -1452,7 +1475,7 @@ document.addEventListener('change',async e=>{
   }
  }catch(err){notice(errorMsg(err),true)}
 });
-$('#logoutBtn').addEventListener('click',async()=>{if(state.sb)await state.sb.auth.signOut();state.me=null;state.account=null;state.page='overview';renderAuth('login');notice('Signed out.')});
+$('#logoutBtn').addEventListener('click',async()=>{if(!confirmDiscardChanges())return;if(state.sb)await state.sb.auth.signOut();state.me=null;state.account=null;state.page='overview';renderAuth('login');notice('Signed out.')});
 $('#dialogClose').addEventListener('click',closeDialog);
 $('#dialog').addEventListener('click',e=>{if(e.target.id==='dialog')closeDialog()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDialog()});
