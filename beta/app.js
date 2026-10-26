@@ -1047,7 +1047,7 @@ async function handleClick(target){
   if(!response.ok||!result.ok)throw Error(result.error||'AI Job Search failed (HTTP '+response.status+').');
   const rows=Array.isArray(result.jobs)?result.jobs:[];
   const funnel=result.funnel&&typeof result.funnel==='object'?result.funnel:{};
-  const metrics={...funnel,model:result.model||'',response_id:result.response_id||''};
+  const metrics={...funnel,web_search_call_count:Number(result.web_search_call_count||0),web_sources_retrieved_count:Number(result.web_sources_retrieved_count||0),model:result.model||'',response_id:result.response_id||''};
   const {data,error}=await state.sb.rpc('import_ai_search_results_v3',{p_customer:customer,p_rows:rows,p_metrics:metrics});
   if(error)throw error;
   await loadData(state.me);
