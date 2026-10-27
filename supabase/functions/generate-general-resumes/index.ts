@@ -95,6 +95,14 @@ Deno.serve(async (req: Request) => {
     if (!authorized && actor?.role === "customer") authorized = user.id === customerId;
     if (!authorized) return respond({ error: "Not authorized for this customer" }, 403);
 
+    // Never send profile or original resumes to an AI provider without standing consent.
+    const { data: aiConsent, error: consentError } = await admin.from("document_authorizations")
+      .select("accepted_at,revoked_at").eq("customer_id", customerId).maybeSingle();
+    if (consentError) return respond({ error: "Could not verify AI processing authorization" }, 503);
+    if (!aiConsent?.accepted_at || aiConsent.revoked_at) {
+      return respond({ error: "Customer AI processing authorization is required before generating resumes" }, 403);
+    }
+
     const { data: evidence, error: evidenceError } = await admin.from("candidate_evidence_versions")
       .select("*").eq("customer_id", customerId).order("version", { ascending: false }).limit(1).maybeSingle();
     if (evidenceError || !evidence) return respond({ error: "Run Resume Analysis before generating general resumes." }, 400);
