@@ -68,6 +68,17 @@ Deno.serve(async (req: Request) => {
     if (!authorized && actor?.role === "customer") authorized = user.id === customerId;
     if (!authorized) return respond({ error: "Not authorized for this customer" }, 403);
 
+    // AI processing of reference resumes and profile data requires customer-granted,
+    // unrevoked standing authorization. Strategy activation alone makes no AI call.
+    if (action !== "activate_strategy") {
+      const { data: aiConsent, error: consentError } = await admin.from("document_authorizations")
+        .select("accepted_at,revoked_at").eq("customer_id", customerId).maybeSingle();
+      if (consentError) return respond({ error: "Could not verify AI processing authorization" }, 503);
+      if (!aiConsent?.accepted_at || aiConsent.revoked_at) {
+        return respond({ error: "Customer AI processing authorization is required before analysis or strategy generation" }, 403);
+      }
+    }
+
     const profileData = {
       target_roles: clean(profile.target_roles),
       transferable_roles: clean(profile.transferable_roles),
