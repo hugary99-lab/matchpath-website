@@ -70,6 +70,17 @@ Deno.serve(async (req: Request) => {
 
     if (!canRunSearch && input.preview_only !== true && input.improve_prompt !== true) return respond({ error: "This customer is not authorized to run AI job search." }, 403);
 
+    // A local prompt preview does not call the AI provider; prompt improvement and
+    // actual searches do, so both must fail closed when customer consent is absent.
+    if (input.preview_only !== true) {
+      const { data: aiConsent, error: consentError } = await admin.from("document_authorizations")
+        .select("accepted_at,revoked_at").eq("customer_id", customerId).maybeSingle();
+      if (consentError) return respond({ error: "Could not verify AI processing authorization" }, 503);
+      if (!aiConsent?.accepted_at || aiConsent.revoked_at) {
+        return respond({ error: "Customer AI processing authorization is required before AI job search" }, 403);
+      }
+    }
+
     const { data: existing } = await admin.from("jobs")
       .select("company,requisition_id,job_url")
       .eq("customer_id", customerId)
