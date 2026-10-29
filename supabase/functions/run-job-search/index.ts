@@ -1,4 +1,5 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { gateJobResults } from "./quality-gate.mjs";
 
 const cors = {
   "Access-Control-Allow-Origin": "https://matchpath.netlify.app",
@@ -476,14 +477,13 @@ Deno.serve(async (req: Request) => {
 
     const rawFunnel = parsed?.funnel && typeof parsed.funnel === "object" ? parsed.funnel : {};
     const searchedAt = new Date().toISOString();
-    const jobs = (Array.isArray(parsed.jobs) ? parsed.jobs : [])
+    const normalizedJobs = (Array.isArray(parsed.jobs) ? parsed.jobs : [])
       .filter((j: any) => {
         try {
           const u = new URL(String(j.job_url || ""));
           return u.protocol === "https:" && clean(j.job_title) && clean(j.company);
         } catch { return false; }
       })
-      .slice(0, 25)
       .map((j: any) => ({
         searched_at: searchedAt,
         job_title: clean(j.job_title, 240),
@@ -501,6 +501,12 @@ Deno.serve(async (req: Request) => {
         fit_reason: clean(j.fit_reason),
         concerns: clean(j.concerns),
       }));
+
+    // Independently enforce the customer's current minimum score, exact-posting
+    // suppression and intra-response deduplication. AI-reported funnel totals
+    // remain estimates; this gate does not establish live posting availability.
+    const { jobs, dropped: postFilterDrops, threshold: appliedMinimumFitScore } =
+      gateJobResults(normalizedJobs, suppress, profile.min_fit_score, 25);
 
     const qualifiedCount = jobs.filter((j: any) => j.qualification_status === "Qualified").length;
     const needsVerificationCount = jobs.length - qualifiedCount;
@@ -526,6 +532,9 @@ Deno.serve(async (req: Request) => {
       ok: true,
       jobs,
       funnel,
+      post_filter_drops: postFilterDrops,
+      applied_minimum_fit_score: appliedMinimumFitScore,
+      funnel_provenance: "model_reported_reviewed_and_rejections; server_recomputed_returned_counts",
       web_search_call_count: webSearchCalls.length,
       web_sources_retrieved_count: sourceUrls.size,
       found: jobs.length,
