@@ -1,0 +1,7 @@
+case_id,location_mandatory,location_job,minimum_salary_mandatory,job_salary,remote_mandatory,job_remote,skill_flexible,job_has_skill,expected_eligible,reason
+MP01,Toronto,Toronto,120000,130000,true,true,SQL,true,true,all_mandatory_pass
+MP02,Toronto,Ottawa,120000,150000,true,true,SQL,true,false,location_mismatch
+MP03,Toronto,Toronto,120000,110000,true,true,SQL,true,false,salary_below_mandatory
+MP04,Toronto,Toronto,120000,130000,true,false,SQL,true,false,remote_mismatch
+MP05,Toronto,Toronto,120000,130000,true,true,SQL,false,true,flexible_skill_must_not_disqualify
+MP06,Toronto,Toronto,120000,,true,true,SQL,true,false,missing_salary_cannot_pass_mandatory
