@@ -22,3 +22,19 @@ test('flexible skill is not a mandatory eligibility gate',()=>{
   assert.equal(eligible({...base,job_has_skill:'false'}),eligible(base));
 });
 // Fixture semantics only. This does not invoke the actual search/scoring implementation.
+
+test('mandatory salary is a strict numeric boundary',()=>{
+  const base=rows.find(r=>r.minimum_salary_mandatory && r.job_salary);
+  assert.ok(base,'salary boundary fixture missing');
+  const minimum=Number(base.minimum_salary_mandatory);
+  assert.ok(Number.isFinite(minimum) && minimum>0);
+  assert.equal(eligible({...base,job_salary:String(minimum)}),true);
+  assert.equal(eligible({...base,job_salary:String(minimum-1)}),false);
+  assert.equal(eligible({...base,job_salary:''}),false);
+});
+test('a missing mandatory remote signal cannot be treated as true',()=>{
+  const base=rows.find(r=>r.remote_mandatory==='true');
+  assert.ok(base,'remote requirement fixture missing');
+  assert.equal(eligible({...base,job_remote:''}),false);
+  assert.equal(eligible({...base,job_remote:'false'}),false);
+});
