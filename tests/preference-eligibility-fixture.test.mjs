@@ -38,3 +38,16 @@ test('a missing mandatory remote signal cannot be treated as true',()=>{
   assert.equal(eligible({...base,job_remote:''}),false);
   assert.equal(eligible({...base,job_remote:'false'}),false);
 });
+
+
+// Source-linked guard checks. These detect accidental removal of UI gates;
+// they do not substitute for authenticated RLS or browser acceptance.
+test('beta portal retains customer authorization and human submission gates',()=>{
+  const app=readFileSync(new URL('../beta/app.js',import.meta.url),'utf8');
+  assert.match(app,/const currentDocumentAuthorization=\(\)=>state\.documentAuthorizations\.find\(a=>a\.customer_id===currentCustomer\(\)&&!a\.revoked_at\)/);
+  assert.match(app,/function canRecordSubmission\(\)/);
+  assert.match(app,/a\.allow_managed_submission/);
+  assert.match(app,/if\(!canRecordSubmission\(\)\)throw Error\('Standing customer document authorization/);
+  assert.match(app,/if\(!canOperateUi\(\)\)throw Error\('Not authorized\.'\)/);
+  assert.match(app,/if\(!currentDocumentAuthorization\(\)\)throw Error\('Customer standing consent is required/);
+});
