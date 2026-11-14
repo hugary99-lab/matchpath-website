@@ -19,8 +19,8 @@ const baseline = () => ({
     deployment_sha: 'abcdef1234567',
     actor_alias: 'fictional-actor',
     request_status: '200',
-    evidence_ref: 'synthetic:placeholder-not-real-evidence',
-    database_event_ref: 'synthetic:placeholder-not-real-event'
+    evidence_ref: 'synthetic:browser-trace-'+i,
+    database_event_ref: 'synthetic:db-event-'+i
   }))
 });
 function run(data) {
@@ -63,4 +63,17 @@ test('non-synthetic environment fails closed', () => {
 test('non-PASS scenario fails closed', () => {
   const d=baseline(); d.scenarios[0].status='FAIL';
   assert.notEqual(run(d).status,0);
+});
+
+test('placeholder evidence is rejected', () => {
+ const d=baseline(); d.scenarios[0].evidence_ref='synthetic:placeholder';
+ assert.notEqual(run(d).status,0);
+});
+test('reused evidence reference is rejected', () => {
+ const d=baseline(); d.scenarios[1].evidence_ref=d.scenarios[0].evidence_ref;
+ assert.notEqual(run(d).status,0);
+});
+test('reused database event reference is rejected', () => {
+ const d=baseline(); d.scenarios[1].database_event_ref=d.scenarios[0].database_event_ref;
+ assert.notEqual(run(d).status,0);
 });
