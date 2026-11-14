@@ -13,6 +13,8 @@ catch(e){console.error('NOT ACCEPTED: cannot parse evidence: '+e.message);proces
 if(!data || !Array.isArray(data.scenarios)) errors.push('scenarios array missing');
 const rows=Array.isArray(data?.scenarios)?data.scenarios:[];
 const seen=new Set();
+const evidenceRefs=new Set();
+const eventRefs=new Set();
 for(const row of rows){
  if(!row || !ids.includes(row.id)){errors.push('unexpected or missing scenario ID');continue}
  if(seen.has(row.id))errors.push('duplicate '+row.id);
@@ -23,6 +25,14 @@ for(const row of rows){
  }
  if(row.deployment_sha && !/^[a-f0-9]{7,40}$/.test(row.deployment_sha))errors.push(row.id+' invalid deployment SHA');
  if(row.evidence_ref && !/^(synthetic:|redacted:)/.test(row.evidence_ref))errors.push(row.id+' evidence must be labelled synthetic/redacted');
+ for(const [field, refs] of [['evidence_ref', evidenceRefs], ['database_event_ref', eventRefs]]) {
+  const value=row[field];
+  if(typeof value==='string' && value.trim()) {
+   if(/placeholder|not-real|todo|tbd|example/i.test(value)) errors.push(row.id+' '+field+' contains placeholder');
+   if(refs.has(value)) errors.push(row.id+' duplicate '+field);
+   refs.add(value);
+  }
+ }
 }
 for(const id of ids)if(!seen.has(id))errors.push('missing '+id);
 if(rows.length!==12)errors.push('expected exactly 12 scenarios');
