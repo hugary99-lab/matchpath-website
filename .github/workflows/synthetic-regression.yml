@@ -1,0 +1,20 @@
+name: MatchPath static and synthetic regression checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: JavaScript syntax
+        run: npm run check
+      - name: Synthetic regression suite (not E2E acceptance)
+        run: npm test
